@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "922728355854",
+    "project_id": "airdash-4865f",
+    "storage_bucket": "airdash-4865f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:922728355854:android:4388632422828bb7ccc45f",
+        "android_client_info": {
+          "package_name": "com.airdash.airdash"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBjddAuT4VmofUlyn2V4CXwJGtjSJzDmkE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
