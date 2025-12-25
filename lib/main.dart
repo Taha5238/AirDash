@@ -4,7 +4,11 @@ import 'core/theme/theme_controller.dart';
 
 import 'features/splash/presentation/pages/splash_screen.dart';
 
-void main() {
+import 'package:hive_flutter/hive_flutter.dart';
+
+void main() async {
+  await Hive.initFlutter();
+  await Hive.openBox('filesBox');
   runApp(const AirDashApp());
 }
 

@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import '../../../files/data/repositories/mock_file_repository.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../../../files/data/repositories/offline_file_service.dart';
 import '../../../files/data/models/file_item.dart';
 import '../../../files/presentation/widgets/upload_bottom_sheet.dart';
 import '../../../files/presentation/widgets/transfer_modal.dart';
 
-class HomeView extends StatelessWidget {
+class HomeView extends StatefulWidget {
   const HomeView({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final recentFiles = MockFileRepository.getRecentFiles();
+  State<HomeView> createState() => _HomeViewState();
+}
 
+class _HomeViewState extends State<HomeView> {
+  final OfflineFileService _fileService = OfflineFileService();
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Dashboard"),
@@ -20,109 +26,122 @@ class HomeView extends StatelessWidget {
           const SizedBox(width: 16),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildAnimatedItem(delay: 0, child: _buildStorageCard(context)),
-            const SizedBox(height: 24),
-            _buildAnimatedItem(
-              delay: 100,
-              child: Text(
-                "Quick Actions",
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildAnimatedItem(
-              delay: 200,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
+      body: ValueListenableBuilder(
+        valueListenable: Hive.box('filesBox').listenable(),
+        builder: (context, box, _) {
+          final recentFiles = _fileService.getAllFiles().take(5).toList(); // Show top 5 recent
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildAnimatedItem(delay: 0, child: _buildStorageCard(context)),
+                const SizedBox(height: 24),
+                _buildAnimatedItem(
+                  delay: 100,
+                  child: Text(
+                    "Quick Actions",
+                    style: Theme.of(
                       context,
-                      "Upload",
-                      LucideIcons.uploadCloud,
-                      Colors.blue,
-                      () => _showUploadSheet(context),
-                    ),
+                    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildActionButton(
-                      context,
-                      "Transfer",
-                      LucideIcons.send,
-                      Colors.orange,
-                      () => _showTransferModal(context),
-                    ),
+                ),
+                const SizedBox(height: 16),
+                _buildAnimatedItem(
+                  delay: 200,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          "Upload",
+                          LucideIcons.uploadCloud,
+                          Colors.blue,
+                          () => _showUploadSheet(context),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          "Transfer",
+                          LucideIcons.send,
+                          Colors.orange,
+                          () => _showTransferModal(context),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 16),
+                _buildAnimatedItem(
+                  delay: 300,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          "Scan Doc",
+                          LucideIcons.scan,
+                          Colors.purple,
+                          () {}, // Mock
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          "Cleanup",
+                          LucideIcons.trash2,
+                          Colors.red,
+                          () {}, // Mock
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _buildAnimatedItem(
+                  delay: 400,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Recent Files",
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {}, // Navigate to Files tab?
+                        child: const Text("View All"),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (recentFiles.isEmpty)
+                  const Center(child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text("No recent files"),
+                  ))
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: recentFiles.length,
+                    itemBuilder: (context, index) {
+                      return _buildAnimatedItem(
+                        delay: 500 + (index * 100),
+                        child: _buildFileTile(context, recentFiles[index]),
+                      );
+                    },
+                  ),
+              ],
             ),
-            const SizedBox(height: 16),
-            _buildAnimatedItem(
-              delay: 300,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      context,
-                      "Scan Doc",
-                      LucideIcons.scan,
-                      Colors.purple,
-                      () {}, // Mock
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildActionButton(
-                      context,
-                      "Cleanup",
-                      LucideIcons.trash2,
-                      Colors.red,
-                      () {}, // Mock
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            _buildAnimatedItem(
-              delay: 400,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Recent Files",
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () {}, // Navigate to Files tab?
-                    child: const Text("View All"),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: recentFiles.length,
-              itemBuilder: (context, index) {
-                return _buildAnimatedItem(
-                  delay: 500 + (index * 100),
-                  child: _buildFileTile(context, recentFiles[index]),
-                );
-              },
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

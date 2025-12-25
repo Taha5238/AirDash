@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/utils/responsive_layout.dart';
 import '../../data/models/file_item.dart';
-import '../../data/repositories/mock_file_repository.dart';
-import '../widgets/upload_bottom_sheet.dart';
+import '../../data/repositories/offline_file_service.dart';
 import '../widgets/transfer_modal.dart';
 import 'file_detail_view.dart';
+import 'file_search_delegate.dart';
 
 class FileExplorerView extends StatefulWidget {
   const FileExplorerView({super.key});
@@ -15,16 +16,57 @@ class FileExplorerView extends StatefulWidget {
 }
 
 class _FileExplorerViewState extends State<FileExplorerView> {
-  final List<FileItem> _files = MockFileRepository.getAllFiles();
+  final OfflineFileService _fileService = OfflineFileService();
+  // List<FileItem> _files = []; // Handled by ValueListenableBuilder
   FileItem? _selectedFile;
+  String _searchQuery = '';
+  FileType? _filterType;
 
-  @override
-  void initState() {
-    super.initState();
-    if (_files.isNotEmpty) {
-      _selectedFile = _files.first;
+
+  Future<void> _pickAndSaveFile() async {
+    try {
+      final newItem = await _fileService.pickAndSaveFile();
+      if (newItem != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File saved offline!')),
+        );
+        // _loadFiles(); // Handled by listener
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+         SnackBar(content: Text('Error saving file: $e'), backgroundColor: Colors.red),
+      );
     }
   }
+
+  Future<void> _deleteFile(FileItem file) async {
+    await _fileService.deleteFile(file.id);
+    
+    if (_selectedFile?.id == file.id) {
+        setState(() {
+            _selectedFile = null;
+        });
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('File deleted.')),
+    );
+
+  }
+
+  void _onSearch(String query) {
+      setState(() {
+          _searchQuery = query;
+      });
+  }
+
+  void _onFilter(FileType? type) {
+      setState(() {
+          _filterType = type;
+      });
+  }
+
+
 
   void _onFileTap(FileItem file) {
     if (ResponsiveLayout.isDesktop(context)) {
@@ -46,41 +88,89 @@ class _FileExplorerViewState extends State<FileExplorerView> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDesktop = ResponsiveLayout.isDesktop(context);
+    return ValueListenableBuilder(
+      valueListenable: Hive.box('filesBox').listenable(),
+      builder: (context, box, _) {
+        // Re-fetch files whenever box changes
+        final allFiles = _fileService.getAllFiles();
+        
+        // Apply Filters
+        final filteredFiles = allFiles.where((file) {
+          final matchesSearch = file.name.toLowerCase().contains(_searchQuery.toLowerCase());
+          final matchesType = _filterType == null || file.type == _filterType;
+          return matchesSearch && matchesType;
+        }).toList();
 
-    if (isDesktop) {
-      return Row(
-        children: [
-          // Left Pane: List
-          Expanded(
-            flex: 2, // 40% width
-            child: _FileListView(
-              files: _files,
-              onFileTap: _onFileTap,
-              selectedFile: _selectedFile,
-            ),
-          ),
-          const VerticalDivider(width: 1),
-          // Right Pane: Detail
-          Expanded(
-            flex: 3, // 60% width
-            child: _selectedFile != null
-                ? FileDetailView(
-                    key: ValueKey(_selectedFile!.id), // Animate switch
-                    file: _selectedFile!,
-                  )
-                : const Center(child: Text("Select a file")),
-          ),
-        ],
-      );
-    } else {
-      // Mobile View
-      return _FileListView(
-        files: _files,
-        onFileTap: _onFileTap,
-        selectedFile: null, // No highlighting on mobile list
-      );
-    }
+        // If selected file was deleted (not in allFiles), clear selection
+        if (_selectedFile != null && !allFiles.any((f) => f.id == _selectedFile!.id)) {
+            // Schedule the state update for next frame to avoid build collision
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                   setState(() {
+                     _selectedFile = null;
+                   });
+                }
+            });
+        }
+        
+        // Also update selected file reference if it changed (e.g. starred status)
+        if (_selectedFile != null) {
+           try {
+             final updatedSelected = allFiles.firstWhere((f) => f.id == _selectedFile!.id);
+             if (updatedSelected != _selectedFile) {
+               // We don't need setState here usually if we just pass updatedSelected down, 
+               // but _selectedFile is state.
+               // Let's just use updatedSelected in the UI.
+               _selectedFile = updatedSelected;
+             }
+           } catch (_) {}
+        }
+
+        final bool isDesktop = ResponsiveLayout.isDesktop(context);
+
+        if (isDesktop) {
+          return Row(
+            children: [
+              // Left Pane: List
+              Expanded(
+                flex: 2, 
+                child: _FileListView(
+                  files: filteredFiles,
+                  onFileTap: _onFileTap,
+                  selectedFile: _selectedFile,
+                  onUpload: _pickAndSaveFile,
+                  onDelete: _deleteFile,
+                  onSearch: _onSearch,
+                  onFilter: _onFilter,
+                ),
+              ),
+              const VerticalDivider(width: 1),
+              // Right Pane: Detail
+              Expanded(
+                flex: 3, 
+                child: _selectedFile != null
+                    ? FileDetailView(
+                        key: ValueKey(_selectedFile!.id), 
+                        file: _selectedFile!,
+                      )
+                    : const Center(child: Text("Select a file")),
+              ),
+            ],
+          );
+        } else {
+          // Mobile View
+          return _FileListView(
+            files: filteredFiles,
+            onFileTap: _onFileTap,
+            selectedFile: null, 
+            onUpload: _pickAndSaveFile,
+            onDelete: _deleteFile,
+            onSearch: _onSearch,
+            onFilter: _onFilter,
+          );
+        }
+      },
+    );
   }
 }
 
@@ -88,11 +178,19 @@ class _FileListView extends StatelessWidget {
   final List<FileItem> files;
   final Function(FileItem) onFileTap;
   final FileItem? selectedFile;
+  final VoidCallback onUpload;
+  final Function(FileItem) onDelete;
+  final Function(String) onSearch;
+  final Function(FileType?) onFilter;
 
   const _FileListView({
     required this.files,
     required this.onFileTap,
     this.selectedFile,
+    required this.onUpload,
+    required this.onDelete,
+    required this.onSearch,
+    required this.onFilter,
   });
 
   @override
@@ -101,7 +199,14 @@ class _FileListView extends StatelessWidget {
       appBar: AppBar(
         title: const Text('My Files'),
         actions: [
-          IconButton(icon: const Icon(LucideIcons.search), onPressed: () {}),
+          IconButton(
+            icon: const Icon(LucideIcons.search), 
+             onPressed: () {
+                // Determine search state? For now, we'll just allow typing if we had a field.
+                // Or implementing a simple search bar in the AppBar
+                showSearch(context: context, delegate: FileSearchDelegate(files, onSearch));
+             }
+          ),
           IconButton(
             icon: const Icon(LucideIcons.send),
             tooltip: 'Transfer',
@@ -119,21 +224,29 @@ class _FileListView extends StatelessWidget {
               );
             },
           ),
-          IconButton(icon: const Icon(LucideIcons.filter), onPressed: () {}),
+          PopupMenuButton<FileType>(
+            icon: const Icon(LucideIcons.filter),
+            onSelected: onFilter,
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: null, child: Text('All')),
+              ...FileType.values.map(
+                (type) => PopupMenuItem(
+                  value: type, 
+                  child: Text(type.toString().split('.').last.toUpperCase())
+                )
+              ),
+            ],
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            backgroundColor: Colors.transparent,
-            builder: (context) => const UploadBottomSheet(),
-          );
-        },
+        onPressed: onUpload,
         icon: const Icon(LucideIcons.uploadCloud),
         label: const Text('Upload'),
       ),
-      body: ListView.builder(
+      body: files.isEmpty 
+          ? const Center(child: Text("No files yet. Upload one!"))
+          : ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: files.length,
         itemBuilder: (context, index) {
@@ -185,8 +298,34 @@ class _FileListView extends StatelessWidget {
                         : FontWeight.normal,
                   ),
                 ),
-                subtitle: Text(file.size),
-                trailing: const Icon(LucideIcons.moreVertical, size: 20),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(file.size),
+                    Text(
+                      file.synced ? "Synced" : "Local only",
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: file.synced ? Colors.green : Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'delete') {
+                      onDelete(file);
+                    }
+                  },
+                  itemBuilder: (BuildContext context) {
+                    return {'Delete'}.map((String choice) {
+                      return PopupMenuItem<String>(
+                        value: choice.toLowerCase(),
+                        child: Text(choice),
+                      );
+                    }).toList();
+                  },
+                ),
                 onTap: () => onFileTap(file),
                 selected: isSelected,
                 shape: RoundedRectangleBorder(
