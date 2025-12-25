@@ -58,7 +58,7 @@ class _HomeViewState extends State<HomeView> {
                           "Upload",
                           LucideIcons.uploadCloud,
                           Colors.blue,
-                          () => _showUploadSheet(context),
+                          _handleUpload,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -68,7 +68,7 @@ class _HomeViewState extends State<HomeView> {
                           "Transfer",
                           LucideIcons.send,
                           Colors.orange,
-                          () => _showTransferModal(context),
+                          _handleTransfer,
                         ),
                       ),
                     ],
@@ -85,7 +85,7 @@ class _HomeViewState extends State<HomeView> {
                           "Scan Doc",
                           LucideIcons.scan,
                           Colors.purple,
-                          () {}, // Mock
+                          _handleScanDoc,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -95,7 +95,7 @@ class _HomeViewState extends State<HomeView> {
                           "Cleanup",
                           LucideIcons.trash2,
                           Colors.red,
-                          () {}, // Mock
+                          _handleCleanup,
                         ),
                       ),
                     ],
@@ -217,77 +217,156 @@ class _HomeViewState extends State<HomeView> {
   }
 
   Widget _buildStorageCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Theme.of(context).colorScheme.primary,
-            Theme.of(
-              context,
-            ).colorScheme.tertiary, // Will fallback if tertiary not set?
-            // Theme has primary and secondary. Let's use primary and a shade.
-            // Or Primary and Secondary.
-            Theme.of(context).colorScheme.secondary,
+    final int usedBytes = _fileService.getTotalSize();
+    final int totalBytes = 5 * 1024 * 1024 * 1024; // 5 GB limit
+    final double progress = (usedBytes / totalBytes).clamp(0.0, 1.0);
+    
+    // Smart formatting
+    String usedString;
+    if (usedBytes < 1024 * 1024 * 1024) {
+       // Less than 1 GB, show MB
+       usedString = "${(usedBytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+    } else {
+       usedString = "${(usedBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
+    }
+
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                 Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(LucideIcons.cloud, color: Theme.of(context).colorScheme.primary),
+                 ),
+                 const SizedBox(width: 16),
+                 Text(
+                   "Free Plan",
+                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                     fontWeight: FontWeight.bold,
+                   ),
+                 ),
+                 const Spacer(),
+                 TextButton(
+                   onPressed: () {
+                       ScaffoldMessenger.of(context).showSnackBar(
+                           const SnackBar(content: Text("Upgrade feature coming soon!"))
+                       );
+                   }, 
+                   child: const Text("Upgrade", style: TextStyle(fontWeight: FontWeight.bold)),
+                 ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            ClipRRect(
+               borderRadius: BorderRadius.circular(8),
+               child: LinearProgressIndicator(
+                 value: progress,
+                 minHeight: 12,
+                 backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                 color: Theme.of(context).colorScheme.primary,
+               ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                 Text(
+                   "$usedString used",
+                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                 ),
+                 Text(
+                   "5 GB total",
+                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                 ),
+              ],
+            ),
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(LucideIcons.cloud, color: Colors.white),
-              ),
-              const Icon(LucideIcons.moreVertical, color: Colors.white70),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            "45.5 GB Used",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "of 100 GB Total Storage",
-            style: TextStyle(color: Colors.white70, fontSize: 14),
-          ),
-          const SizedBox(height: 24),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: 0.455,
-              minHeight: 8,
-              backgroundColor: Colors.white.withValues(alpha: 0.2),
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-          ),
-        ],
       ),
     );
   }
+
+  // Actions Logic
+  Future<void> _handleUpload() async {
+      await _fileService.pickAndSaveFile();
+      if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+               const SnackBar(content: Text("File uploaded successfully")),
+           );
+      }
+  }
+
+  Future<void> _handleTransfer() async {
+      // Pick a file to share immediately
+      final file = await _fileService.pickAndSaveFile();
+       if (file != null && mounted) {
+           // Show share dialog for this file
+           _showShareModal(file);
+       }
+  }
+
+  Future<void> _handleScanDoc() async {
+      // Simulate Scan by picking image
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Select an image to scan..."))
+      );
+      await _fileService.pickAndSaveFile(); 
+      // In real app, launch ImagePicker(source: camera)
+  }
+
+  Future<void> _handleCleanup() async {
+      showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+              title: const Text("Cleanup Drive"),
+              content: const Text("WARNING: This will delete ALL files from your secure storage. This action cannot be undone."),
+              actions: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                  FilledButton(
+                      style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                      onPressed: () async {
+                          Navigator.pop(context);
+                          await _fileService.deleteAllFiles();
+                          if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("All files deleted."))
+                              );
+                          }
+                      },
+                      child: const Text("Delete All"),
+                  ),
+              ],
+          ),
+      );
+  }
+
+  // Duplicate Share Modal Logic (Or extract it later)
+  void _showShareModal(FileItem file) {
+      // Simplest: Navigate to Detail View
+      // Navigator.push... 
+      // But user might want quick action.
+      // Let's show the same modal as detail view?
+      // I'll extract it if I can, but duplicating for now is faster for this turn.
+      // Actually, navigation is better UX for "Transfer" start.
+      // Or, let's just trigger shareLinkOrEmail directly? 
+      // User liked the new interface.
+      // I'll assume navigating to File Detail is acceptable for "Transfer" as it gives full control.
+      // No, let's do `_fileService.shareLinkOrEmail(file)` immediate?
+      // No, UI matters.
+      // I will implement a quick share here.
+      _fileService.shareLinkOrEmail(file); // Default to Link sharing for "Transfer" button quickness
+  }
+
 
   Widget _buildActionButton(
     BuildContext context,
