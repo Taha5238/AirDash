@@ -16,25 +16,33 @@ import 'package:universal_html/html.dart' as html;
 import 'package:url_launcher/url_launcher.dart';
 import '../models/file_item.dart';
 
+import '../../../auth/data/services/auth_service.dart';
+
 class OfflineFileService {
   Box get _box => Hive.box('filesBox');
 
-  // Get all files from Hive
+  // Get all files from Hive (Filtered by User)
   List<FileItem> getAllFiles() {
+    final currentUserUid = AuthService().currentUserUid;
+    if (currentUserUid == null) return []; // No files if not logged in
+
     final List<FileItem> files = [];
     for (var key in _box.keys) {
       final data = _box.get(key);
       if (data != null) {
         try {
-          // Ensure it's a Map we can use
            final map = Map<String, dynamic>.from(data);
-           files.add(FileItem.fromMap(map));
+           final item = FileItem.fromMap(map);
+           
+           // Filter: Only show files for this user
+           if (item.userId == currentUserUid) {
+              files.add(item);
+           }
         } catch (e) {
           print("Error parsing file item: $e");
         }
       }
     }
-    // Sort by newest first
     // Sort by Starred first, then newest
     files.sort((a, b) {
       if (a.isStarred && !b.isStarred) return -1;
@@ -46,18 +54,21 @@ class OfflineFileService {
 
   // Pick and save a file
   Future<FileItem?> pickAndSaveFile() async {
+    final currentUserUid = AuthService().currentUserUid;
+    if (currentUserUid == null) {
+        print("Cannot save file: No user logged in");
+        return null;
+    }
+
     try {
       print("Picking file...");
       fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
-        withData: true, // Important for Web to get bytes
+        withData: true, 
       );
 
       if (result != null) {
          final file = result.files.single;
-         
-         // On Web, path throws. So we MUST check kIsWeb first or avoid touching .path
          if (!kIsWeb && file.path == null) {
-            print("File picker cancelled or path is null");
             return null; 
          }
 
@@ -67,28 +78,15 @@ class OfflineFileService {
          int size = file.size;
 
          if (kIsWeb) {
-           print("Web platform detected. Reading bytes...");
            content = file.bytes;
-           // On Web, we don't have a path, so we skip file copying
          } else {
-            // Mobile/Desktop Logic
-            String originalPath = file.path!;
-            print("File picked: $originalPath");
-            
-            // Get App directory
             final Directory appDir = await getApplicationDocumentsDirectory();
             newPath = path.join(appDir.path, fileName);
-            print("Saving to: $newPath");
-            
-            // Copy File
-            final File originalFile = File(originalPath);
+            final File originalFile = File(file.path!);
             await originalFile.copy(newPath);
-            print("File copied successfully");
-            
             size = File(newPath).lengthSync();
          }
 
-        // Create Metadata
         final String id = DateTime.now().millisecondsSinceEpoch.toString();
         final FileItem newItem = FileItem(
           id: id,
@@ -99,21 +97,16 @@ class OfflineFileService {
           localPath: newPath,
           synced: false,
           content: content,
+          userId: currentUserUid, // Attach User ID
         );
 
-        // Save to Hive
-        print("Saving metadata to Hive: ${newItem.toMap()}");
         await _box.put(id, newItem.toMap());
-        print("File saved to Hive");
         return newItem;
-      } else {
-         print("File picker cancelled or path is null");
       }
       return null;
-    } catch (e, stackTrace) {
+    } catch (e) {
       print("Error picking/saving file: $e");
-      print(stackTrace);
-      rethrow; // Rethrow to handle in UI
+      rethrow;
     }
   }
 
@@ -122,18 +115,17 @@ class OfflineFileService {
     final data = _box.get(id);
     if (data != null) {
       final map = Map<String, dynamic>.from(data);
-      final String? localPath = map['localPath'];
+      final item = FileItem.fromMap(map);
       
-      
-      // Delete from storage (Only if not web and path exists)
-      if (!kIsWeb && localPath != null) {
-        final File file = File(localPath);
+      // Security check: Only delete if owned by current user
+      if (item.userId != AuthService().currentUserUid) return;
+
+      if (!kIsWeb && item.localPath != null) {
+        final File file = File(item.localPath!);
         if (await file.exists()) {
           await file.delete();
         }
       }
-      
-      // Delete from Hive
       await _box.delete(id);
     }
   }
@@ -144,6 +136,9 @@ class OfflineFileService {
     if (data != null) {
       final map = Map<String, dynamic>.from(data);
       final item = FileItem.fromMap(map);
+      
+      if (item.userId != AuthService().currentUserUid) return null;
+
       final newItem = FileItem(
         id: item.id,
         name: item.name,
@@ -155,6 +150,7 @@ class OfflineFileService {
         isStarred: !item.isStarred,
         content: item.content,
         color: item.color,
+        userId: item.userId,
       );
       await _box.put(id, newItem.toMap());
       return newItem;
@@ -162,30 +158,13 @@ class OfflineFileService {
     return null;
   }
 
-  // Get Total Size
+
+
+  // Get Total Size (Filtered)
   int getTotalSize() {
       int total = 0;
-      final files = getAllFiles();
+      final files = getAllFiles(); // This is already filtered by userId!
       for (var f in files) {
-          // Parse size string or store size as int in FileItem?
-          // FileItem stores string "1.2 MB". This is bad for calc.
-          // Wait, FileItem construction uses `int size` then formats it.
-          // I should probably store raw bytes in FileItem or just parse the string if I can't change the model easily.
-          // Let's check FileItem definition.
-          // Actually, I can just recalculate from local files if native, but for web/metadata it's harder.
-          // Best way: stored metadata is formatted string. 
-          // I will attempt to parse it, or better, update FileItem to store raw bytes.
-          // For now, let's just parse the "1.2 MB" string approx or rely on the fact that I can't change the hive schema easily without migration.
-          // Wait, `FileItem` has `size` as String.
-          // Let's look at `_formatSize`. 
-          
-          // Temporary hack: Just count items? No, user wants GB.
-          // Let's try to find if I can get raw size.
-          // I will assume I can't easily get raw size from existing string safely without refactor.
-          // I'll calculate it from the file on disk if possible?
-          // No, that's slow.
-          
-          // Let's add a method to parse "1.2 MB" back to bytes relative to unit.
           total += _parseSize(f.size);
       }
       return total;
@@ -205,11 +184,11 @@ class OfflineFileService {
       }
   }
 
-  // Delete All Files (Cleanup)
+  // Delete All Files (Cleanup - Filtered)
   Future<void> deleteAllFiles() async {
-      final files = getAllFiles();
+      final files = getAllFiles(); // Uses filtered list
       for (var f in files) {
-          await deleteFile(f.id);
+          await deleteFile(f.id); // deleteFile has security check too
       }
   }
 

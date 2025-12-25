@@ -15,6 +15,7 @@ class FileItem {
   final bool synced;
   final bool isStarred;
   final Uint8List? content; // For Web support
+  final String? userId; // Owner of the file
 
   const FileItem({
     required this.id,
@@ -28,6 +29,7 @@ class FileItem {
     this.synced = false,
     this.isStarred = false,
     this.content,
+    this.userId,
   });
 
   bool get isFolder => type == FileType.folder;
@@ -42,8 +44,9 @@ class FileItem {
       'localPath': localPath,
       'synced': synced,
       'isStarred': isStarred,
-      'color': color?.value, // Store int value of color
+      'color': color?.value,
       'content': content,
+      'userId': userId,
     };
   }
 
@@ -59,6 +62,7 @@ class FileItem {
       isStarred: (map['isStarred'] as bool?) ?? false,
       color: map['color'] != null ? Color(map['color']) : null,
       content: map['content'],
+      userId: map['userId'],
     );
   }
 }

@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AuthService {
   // Singleton instance
@@ -6,57 +6,69 @@ class AuthService {
   factory AuthService() => _instance;
   AuthService._internal();
 
-  // Mock database of users
-  final Map<String, Map<String, String>> _users = {
-    'demo@airdash.com': {'password': 'password123', 'name': 'Demo User'},
-  };
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  String? _currentUserEmail;
+  // Get Current User
+  User? get currentUser => _auth.currentUser;
 
-  String? get currentUserEmail => _currentUserEmail;
-
-  String get currentUserName {
-    if (_currentUserEmail == null || !_users.containsKey(_currentUserEmail))
-      return 'Guest';
-    return _users[_currentUserEmail]!['name'] ?? 'User';
-  }
-
-  // Simulate network delay
-  Future<void> _simulateDelay() async {
-    await Future.delayed(const Duration(seconds: 1));
-  }
+  String? get currentUserEmail => _auth.currentUser?.email;
+  
+  String get currentUserName => _auth.currentUser?.displayName ?? 'User';
+  
+  String? get currentUserUid => _auth.currentUser?.uid;
 
   // Sign In
   Future<bool> signIn(String email, String password) async {
-    await _simulateDelay();
-    if (_users.containsKey(email) && _users[email]!['password'] == password) {
-      _currentUserEmail = email;
+    try {
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
       return true;
+    } on FirebaseAuthException catch (e) {
+      print("Sign In Error: ${e.message}");
+      return false;
+    } catch (e) {
+      print("General Sign In Error: $e");
+      return false;
     }
-    return false;
   }
 
   // Sign Up
   Future<bool> signUp(String name, String email, String password) async {
-    await _simulateDelay();
-    if (_users.containsKey(email)) {
-      return false; // User already exists
+    try {
+      // Create User
+      final UserCredential cred = await _auth.createUserWithEmailAndPassword(
+        email: email, 
+        password: password
+      );
+      
+      // Update Name
+      if (cred.user != null) {
+        await cred.user!.updateDisplayName(name);
+        await cred.user!.reload(); // Refresh to get updated name
+      }
+      
+      return true;
+    } on FirebaseAuthException catch (e) {
+      print("Sign Up Error: ${e.message}");
+      return false;
+    } catch (e) {
+      print("General Sign Up Error: $e");
+      return false;
     }
-    _users[email] = {'password': password, 'name': name};
-    return true;
   }
 
   // Sign Out
   Future<void> signOut() async {
-    await _simulateDelay();
-    _currentUserEmail = null;
+    await _auth.signOut();
   }
 
-  // Reset Password (Mock)
+  // Reset Password
   Future<bool> resetPassword(String email) async {
-    await _simulateDelay();
-    // In a real app, this would check if email exists and send a link
-    // For mock, we'll just return true if the email format is valid
-    return email.contains('@');
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      return true;
+    } catch (e) {
+      print("Reset Password Error: $e");
+      return false;
+    }
   }
 }

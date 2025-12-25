@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../auth/presentation/pages/login_screen.dart';
+import '../../../dashboard/presentation/pages/dashboard_screen.dart';
+import '../../../auth/data/services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,14 +17,27 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
-      }
-    });
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    // Artificial delay for splash branding
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (mounted) {
+       final user = AuthService().currentUser;
+       if (user != null) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const DashboardScreen()),
+          );
+       } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+          );
+       }
+    }
   }
 
   @override
