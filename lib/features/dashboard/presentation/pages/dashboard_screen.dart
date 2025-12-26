@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/utils/responsive_layout.dart';
 import '../../../files/presentation/pages/file_explorer_view.dart';
-import '../../../various/presentation/pages/profile_screen.dart';
+import '../../../profile/presentation/pages/profile_screen.dart';
 import 'home_view.dart';
 
 class DashboardScreen extends StatefulWidget {

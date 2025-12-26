@@ -52,6 +52,8 @@ dependencies:
   share_plus: ^10.0.0
   universal_html: ^2.2.4
   url_launcher: ^6.2.5
+  cunning_document_scanner: ^1.4.0
+  pdf: ^3.11.3
 
 dev_dependencies:
   flutter_test:

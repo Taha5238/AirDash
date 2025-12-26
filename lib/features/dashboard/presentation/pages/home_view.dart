@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../files/data/repositories/offline_file_service.dart';
 import '../../../files/data/models/file_item.dart';
-import '../../../files/presentation/widgets/upload_bottom_sheet.dart';
-import '../../../files/presentation/widgets/transfer_modal.dart';
+
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -82,10 +86,10 @@ class _HomeViewState extends State<HomeView> {
                       Expanded(
                         child: _buildActionButton(
                           context,
-                          "Scan Doc",
-                          LucideIcons.scan,
+                          "PDF Scan",
+                          LucideIcons.scanLine,
                           Colors.purple,
-                          _handleScanDoc,
+                          _handlePdfScan,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -194,27 +198,7 @@ class _HomeViewState extends State<HomeView> {
   // No, that's flicker prone.
   // I will just use the simple Tween. It looks good enough.
 
-  void _showUploadSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const UploadBottomSheet(),
-    );
-  }
 
-  void _showTransferModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: const TransferModal(),
-      ),
-    );
-  }
 
   Widget _buildStorageCard(BuildContext context) {
     final int usedBytes = _fileService.getTotalSize();
@@ -306,22 +290,89 @@ class _HomeViewState extends State<HomeView> {
       }
   }
 
+  Future<void> _shareFile(FileItem file) async {
+    try {
+      await _fileService.shareFile(file);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sharing file: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Future<void> _handleTransfer() async {
       // Pick a file to share immediately
       final file = await _fileService.pickAndSaveFile();
        if (file != null && mounted) {
-           // Show share dialog for this file
-           _showShareModal(file);
+           await _shareFile(file);
        }
   }
 
-  Future<void> _handleScanDoc() async {
-      // Simulate Scan by picking image
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Select an image to scan..."))
-      );
-      await _fileService.pickAndSaveFile(); 
-      // In real app, launch ImagePicker(source: camera)
+  Future<void> _handlePdfScan() async {
+      try {
+        // 1. Scan Documents
+        List<String>? pictures;
+        try {
+          pictures = await CunningDocumentScanner.getPictures();
+        } catch (e) {
+           // Handle cancellation or error (e.g. no camera on emulator)
+           print("Scanner error: $e");
+           if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Could not start scanner. (Emulator/Permission issue?)"))
+              );
+           }
+           return;
+        }
+
+        if (pictures != null && pictures.isNotEmpty) {
+           if (mounted) {
+               ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(content: Text("Processing PDF..."))
+               );
+           }
+
+           // 2. Create PDF
+           final pdf = pw.Document();
+
+           for (var path in pictures) {
+               final image = pw.MemoryImage(
+                 File(path).readAsBytesSync(),
+               );
+
+               pdf.addPage(
+                 pw.Page(
+                   build: (pw.Context context) {
+                     return pw.Center(
+                       child: pw.Image(image),
+                     );
+                   }
+                 )
+               );
+           }
+
+           // 3. Save PDF
+           final Uint8List bytes = await pdf.save();
+           final String fileName = "Scan_${DateTime.now().millisecondsSinceEpoch}.pdf";
+           
+           final newItem = await _fileService.savePdfFile(bytes, fileName);
+           
+           if (newItem != null && mounted) {
+               ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(content: Text("PDF Saved successfully!"))
+               );
+               // You could open it immediately or just show in list
+           }
+        }
+      } catch (e) {
+         if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Error creating PDF: $e"), backgroundColor: Colors.red),
+           );
+         }
+      }
   }
 
   Future<void> _handleCleanup() async {
@@ -348,23 +399,6 @@ class _HomeViewState extends State<HomeView> {
               ],
           ),
       );
-  }
-
-  // Duplicate Share Modal Logic (Or extract it later)
-  void _showShareModal(FileItem file) {
-      // Simplest: Navigate to Detail View
-      // Navigator.push... 
-      // But user might want quick action.
-      // Let's show the same modal as detail view?
-      // I'll extract it if I can, but duplicating for now is faster for this turn.
-      // Actually, navigation is better UX for "Transfer" start.
-      // Or, let's just trigger shareLinkOrEmail directly? 
-      // User liked the new interface.
-      // I'll assume navigating to File Detail is acceptable for "Transfer" as it gives full control.
-      // No, let's do `_fileService.shareLinkOrEmail(file)` immediate?
-      // No, UI matters.
-      // I will implement a quick share here.
-      _fileService.shareLinkOrEmail(file); // Default to Link sharing for "Transfer" button quickness
   }
 
 
@@ -444,7 +478,11 @@ class _HomeViewState extends State<HomeView> {
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
         subtitle: Text("${file.size} • ${_formatDate(file.modified)}"),
-        trailing: const Icon(LucideIcons.moreVertical, size: 18),
+        trailing: IconButton(
+          icon: const Icon(LucideIcons.share2, size: 20),
+          tooltip: "Share",
+          onPressed: () => _shareFile(file),
+        ),
       ),
     );
   }

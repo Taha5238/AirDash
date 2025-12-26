@@ -49,139 +49,15 @@ class _FileDetailViewState extends State<FileDetailView> {
   }
 
   Future<void> _handleShare() async {
-     showModalBottomSheet(
-        context: context,
-        isScrollControlled: true, // Allow full height and keyboard handling
-        builder: (context) => Padding(
-            // Handle keyboard overlap
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-            child: SingleChildScrollView(
-                child: Container(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                            Text("Share file", style: Theme.of(context).textTheme.headlineSmall),
-                            const SizedBox(height: 24),
-                            
-                            // 1. Link Section
-                            Text("File Link", style: Theme.of(context).textTheme.labelLarge),
-                            const SizedBox(height: 8),
-                            Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                    children: [
-                                        Expanded(
-                                            child: Text(
-                                                "https://airdash.app/share/${_file.id}",
-                                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                                overflow: TextOverflow.ellipsis,
-                                            ),
-                                        ),
-                                        IconButton(
-                                            icon: const Icon(LucideIcons.copy),
-                                            tooltip: "Copy Link",
-                                            onPressed: () {
-                                                _fileService.copyToClipboard(_file);
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(content: Text('Link copied to clipboard')),
-                                                );
-                                                Navigator.pop(context);
-                                            },
-                                        ),
-                                    ],
-                                ),
-                            ),
-                            
-                            const SizedBox(height: 24),
-
-                            // 2. Email Section
-                            Text("Send via Email", style: Theme.of(context).textTheme.labelLarge),
-                            const SizedBox(height: 8),
-                            TextField(
-                                decoration: InputDecoration(
-                                    hintText: "Enter email address",
-                                    suffixIcon: IconButton(
-                                        icon: const Icon(LucideIcons.send),
-                                        onPressed: () {
-                                            // We need a controller or logic to get text, but for stateless simplicity
-                                            // we might need to extract this widget.
-                                            // check below for widget extraction plan.
-                                        },
-                                    ),
-                                    border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                                ),
-                                onSubmitted: (value) {
-                                    if (value.isNotEmpty) {
-                                        Navigator.pop(context);
-                                        _fileService.shareViaEmail(_file, recipient: value);
-                                    }
-                                },
-                            ),
-
-                            const SizedBox(height: 24),
-                            const Divider(),
-                            const SizedBox(height: 16),
-
-                            // 3. Social & System
-                            Text("Social Share", style: Theme.of(context).textTheme.labelLarge),
-                            const SizedBox(height: 16),
-                            Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                children: [
-                                    _SocialIconBtn(
-                                        icon: LucideIcons.messageCircle, 
-                                        color: Colors.green, 
-                                        label: "WhatsApp",
-                                        onTap: () {
-                                             Navigator.pop(context);
-                                             _fileService.shareToSocial(_file, 'whatsapp');
-                                        }
-                                    ),
-                                    _SocialIconBtn(
-                                        icon: LucideIcons.twitter, 
-                                        color: Colors.blue, 
-                                        label: "Twitter",
-                                         onTap: () {
-                                             Navigator.pop(context);
-                                             _fileService.shareToSocial(_file, 'twitter');
-                                        }
-                                    ),
-                                    _SocialIconBtn(
-                                        icon: LucideIcons.linkedin, 
-                                        color: Colors.blueAccent, 
-                                        label: "LinkedIn",
-                                         onTap: () {
-                                             Navigator.pop(context);
-                                             _fileService.shareToSocial(_file, 'linkedin');
-                                        }
-                                    ),
-                                    _SocialIconBtn(
-                                        icon: LucideIcons.share2, 
-                                        color: Theme.of(context).colorScheme.primary, 
-                                        label: "More",
-                                         onTap: () {
-                                             Navigator.pop(context);
-                                             _fileService.shareLinkOrEmail(_file);
-                                        }
-                                    ),
-                                ],
-                            ),
-                            const SizedBox(height: 16),
-                        ],
-                    ),
-                ),
-            ),
-        ),
-    );
+      try {
+        await _fileService.shareFile(_file);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error sharing file: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
   }
 
   Future<void> _handleStar() async {
@@ -399,32 +275,4 @@ class _ActionButton extends StatelessWidget {
 
 
 
-class _SocialIconBtn extends StatelessWidget {
-    final IconData icon;
-    final Color color;
-    final String label;
-    final VoidCallback onTap;
 
-    const _SocialIconBtn({required this.icon, required this.color, required this.label, required this.onTap});
-
-    @override
-    Widget build(BuildContext context) {
-         return GestureDetector(
-             onTap: onTap,
-             child: Column(
-                 children: [
-                     Container(
-                         padding: const EdgeInsets.all(12),
-                         decoration: BoxDecoration(
-                             color: color.withValues(alpha: 0.1),
-                             shape: BoxShape.circle,
-                         ),
-                         child: Icon(icon, color: color, size: 24),
-                     ),
-                     const SizedBox(height: 8),
-                     Text(label, style: const TextStyle(fontSize: 12)),
-                 ],
-             ),
-         );
-    }
-}

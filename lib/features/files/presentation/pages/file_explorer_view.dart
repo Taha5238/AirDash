@@ -4,7 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/utils/responsive_layout.dart';
 import '../../data/models/file_item.dart';
 import '../../data/repositories/offline_file_service.dart';
-import '../widgets/transfer_modal.dart';
+
 import 'file_detail_view.dart';
 import 'file_search_delegate.dart';
 
@@ -52,6 +52,18 @@ class _FileExplorerViewState extends State<FileExplorerView> {
       const SnackBar(content: Text('File deleted.')),
     );
 
+  }
+
+  Future<void> _shareFile(FileItem file) async {
+    try {
+      await _fileService.shareFile(file);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sharing file: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   void _onSearch(String query) {
@@ -140,6 +152,7 @@ class _FileExplorerViewState extends State<FileExplorerView> {
                   selectedFile: _selectedFile,
                   onUpload: _pickAndSaveFile,
                   onDelete: _deleteFile,
+                  onShare: _shareFile,
                   onSearch: _onSearch,
                   onFilter: _onFilter,
                 ),
@@ -165,6 +178,7 @@ class _FileExplorerViewState extends State<FileExplorerView> {
             selectedFile: null, 
             onUpload: _pickAndSaveFile,
             onDelete: _deleteFile,
+            onShare: _shareFile,
             onSearch: _onSearch,
             onFilter: _onFilter,
           );
@@ -180,6 +194,7 @@ class _FileListView extends StatelessWidget {
   final FileItem? selectedFile;
   final VoidCallback onUpload;
   final Function(FileItem) onDelete;
+  final Function(FileItem) onShare;
   final Function(String) onSearch;
   final Function(FileType?) onFilter;
 
@@ -189,6 +204,7 @@ class _FileListView extends StatelessWidget {
     this.selectedFile,
     required this.onUpload,
     required this.onDelete,
+    required this.onShare,
     required this.onSearch,
     required this.onFilter,
   });
@@ -207,23 +223,7 @@ class _FileListView extends StatelessWidget {
                 showSearch(context: context, delegate: FileSearchDelegate(files, onSearch));
              }
           ),
-          IconButton(
-            icon: const Icon(LucideIcons.send),
-            tooltip: 'Transfer',
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                backgroundColor: Colors.transparent,
-                isScrollControlled: true,
-                builder: (context) => Padding(
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).viewInsets.bottom,
-                  ),
-                  child: const TransferModal(),
-                ),
-              );
-            },
-          ),
+
           PopupMenuButton<FileType>(
             icon: const Icon(LucideIcons.filter),
             onSelected: onFilter,
@@ -311,20 +311,31 @@ class _FileListView extends StatelessWidget {
                     ),
                   ],
                 ),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'delete') {
-                      onDelete(file);
-                    }
-                  },
-                  itemBuilder: (BuildContext context) {
-                    return {'Delete'}.map((String choice) {
-                      return PopupMenuItem<String>(
-                        value: choice.toLowerCase(),
-                        child: Text(choice),
-                      );
-                    }).toList();
-                  },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                        icon: const Icon(LucideIcons.share2, size: 20),
+                        tooltip: "Share",
+                        onPressed: () => onShare(file),
+                    ),
+                    PopupMenuButton<String>(
+                      icon: const Icon(LucideIcons.moreVertical, size: 20), // explicit icon for alignment
+                      onSelected: (value) {
+                        if (value == 'delete') {
+                          onDelete(file);
+                        }
+                      },
+                      itemBuilder: (BuildContext context) {
+                        return {'Delete'}.map((String choice) {
+                          return PopupMenuItem<String>(
+                            value: choice.toLowerCase(),
+                            child: Text(choice),
+                          );
+                        }).toList();
+                      },
+                    ),
+                  ],
                 ),
                 onTap: () => onFileTap(file),
                 selected: isSelected,

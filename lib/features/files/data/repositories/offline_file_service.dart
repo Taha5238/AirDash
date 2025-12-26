@@ -13,7 +13,7 @@ import 'package:file_picker/file_picker.dart' as fp;
 import 'package:path/path.dart' as path;
 import 'package:share_plus/share_plus.dart';
 import 'package:universal_html/html.dart' as html;
-import 'package:url_launcher/url_launcher.dart';
+
 import '../models/file_item.dart';
 
 import '../../../auth/data/services/auth_service.dart';
@@ -108,6 +108,43 @@ class OfflineFileService {
       print("Error picking/saving file: $e");
       rethrow;
     }
+  }
+
+  // Save Generated PDF
+  Future<FileItem?> savePdfFile(Uint8List bytes, String fileName) async {
+      final currentUserUid = AuthService().currentUserUid;
+      if (currentUserUid == null) return null;
+
+      try {
+         String? newPath;
+         int size = bytes.length;
+
+         if (!kIsWeb) {
+            final Directory appDir = await getApplicationDocumentsDirectory();
+            newPath = path.join(appDir.path, fileName);
+            final File file = File(newPath);
+            await file.writeAsBytes(bytes);
+         }
+
+         final String id = DateTime.now().millisecondsSinceEpoch.toString();
+         final FileItem newItem = FileItem(
+           id: id,
+           name: fileName,
+           size: _formatSize(size),
+           modified: DateTime.now(),
+           type: FileType.document, // PDF is a document
+           localPath: newPath,
+           synced: false,
+           content: kIsWeb ? bytes : null, // Web uses content, Native uses path (but we can cache content if needed, keeping it null for performance on native unless requested)
+           userId: currentUserUid,
+         );
+
+         await _box.put(id, newItem.toMap());
+         return newItem;
+      } catch (e) {
+          print("Error saving PDF: $e");
+          return null;
+      }
   }
 
   // Delete file
@@ -252,20 +289,6 @@ class OfflineFileService {
      }
   }
 
-  // Share Link / Email (Text only)
-  Future<void> shareLinkOrEmail(FileItem item) async {
-      try {
-          String text = "Check out this file: ${item.name}";
-          String subject = "Sharing ${item.name}";
-          
-          await Share.share(text, subject: subject);
-          
-      } catch (e) {
-         print("Error sharing link: $e");
-         throw Exception("Could not share link: $e");
-      }
-  }
-
   String _getMimeType(String name) {
      final ext = path.extension(name).toLowerCase();
      switch (ext) {
@@ -311,67 +334,6 @@ class OfflineFileService {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
-  // Social Sharing
-  Future<void> shareToSocial(FileItem item, String platform) async {
-      String text = "Check out this file: ${item.name}";
-      String url = "";
-      
-      switch (platform) {
-          case 'whatsapp':
-             url = "whatsapp://send?text=${Uri.encodeComponent(text)}";
-             break;
-          case 'twitter':
-             url = "https://twitter.com/intent/tweet?text=${Uri.encodeComponent(text)}";
-             break;
-          case 'linkedin':
-             url = "https://www.linkedin.com/sharing/share-offsite/?url=${Uri.encodeComponent('https://airdash.app')}"; 
-             break;
-      }
-
-      if (url.isNotEmpty) {
-          final uri = Uri.parse(url);
-          if (await canLaunchUrl(uri)) {
-              await launchUrl(uri);
-          } else {
-             if (platform == 'whatsapp') {
-                 // Fallback for WhatsApp Web
-                 await launchUrl(Uri.parse("https://wa.me/?text=${Uri.encodeComponent(text)}"));
-             } else {
-                 print("Could not launch $url");
-                 throw Exception("Could not open $platform");
-             }
-          }
-      }
-  }
-  // Email Sharing (mailto)
-  Future<void> shareViaEmail(FileItem item, {String? recipient}) async {
-       final String subject = "Sharing ${item.name}";
-       final String body = "Check out this file: ${item.name}\n\nLink: https://airdash.app/share/${item.id}"; // Added fake link to body
-       final Uri emailLaunchUri = Uri(
-        scheme: 'mailto',
-        path: recipient ?? '', // Recipient goes here
-        query: _encodeQueryParameters(<String, String>{
-          'subject': subject,
-          'body': body,
-        }),
-      );
-
-      if (await canLaunchUrl(emailLaunchUri)) {
-        await launchUrl(emailLaunchUri);
-      } else {
-        throw Exception('Could not launch email app');
-      }
-  }
-
-  // Copy Link (Text) to Clipboard
-  Future<void> copyToClipboard(FileItem item) async {
-      final String text = "Check out this file: ${item.name}";
-      await Clipboard.setData(ClipboardData(text: text));
-  }
-
-  String? _encodeQueryParameters(Map<String, String> params) {
-    return params.entries
-        .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
-        .join('&');
-  }
 }
+
+
