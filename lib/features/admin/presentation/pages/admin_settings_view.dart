@@ -110,7 +110,7 @@ class _AdminSettingsViewState extends State<AdminSettingsView> {
         _SectionHeader(title: 'Admin Preferences'),
         SwitchListTile(
           title: const Text('Dark Mode'),
-          subtitle: const Text('Toggle app theme (UI demo)'),
+          subtitle: const Text('Toggle app theme'),
           secondary: const Icon(LucideIcons.moon),
           value: _darkMode,
           onChanged: (val) {

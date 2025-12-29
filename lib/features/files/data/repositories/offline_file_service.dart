@@ -55,7 +55,7 @@ class OfflineFileService {
   }
 
   // Pick and save a file
-  Future<FileItem?> pickAndSaveFile() async {
+  Future<FileItem?> pickAndSaveFile({Function(String name, int size)? onFilePicked}) async {
     final currentUserUid = AuthService().currentUserUid;
     final String? userName = AuthService().currentUserName; // Get name for metadata
     if (currentUserUid == null) {
@@ -89,6 +89,18 @@ class OfflineFileService {
             await originalFile.copy(newPath);
             size = File(newPath).lengthSync();
          }
+
+         // Callback for UI feedback
+         if (onFilePicked != null) {
+            onFilePicked(fileName, size);
+         }
+
+         // Simulate Upload Delay (1 sec per 1 MB, min 1 sec, max 10 sec)
+         int delayMillis = (size / (1024 * 1024) * 1000).toInt(); 
+         if (delayMillis < 1000) delayMillis = 1000;
+         if (delayMillis > 10000) delayMillis = 10000;
+         
+         await Future.delayed(Duration(milliseconds: delayMillis));
 
         final String id = DateTime.now().millisecondsSinceEpoch.toString();
         final FileItem newItem = FileItem(

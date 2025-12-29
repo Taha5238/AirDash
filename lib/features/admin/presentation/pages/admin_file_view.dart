@@ -60,9 +60,13 @@ class AdminFileView extends StatelessWidget {
             final name = data['name'] ?? 'Unknown File';
             final size = data['size'] ?? 0;
             final uploadedBy = data['userName'] ?? 'Unknown User'; // Assuming we store this
+            final isApk = name.toLowerCase().endsWith('.apk');
             
             return ListTile(
-              leading: const Icon(LucideIcons.file),
+              leading: Icon(
+                isApk ? LucideIcons.cloud : LucideIcons.file, 
+                color: isApk ? Colors.blue : null
+              ),
               title: Text(name),
               subtitle: Text('Size: ${_formatSize(size)} • By: $uploadedBy'),
               trailing: IconButton(

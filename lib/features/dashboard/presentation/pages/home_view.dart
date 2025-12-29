@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -39,7 +40,10 @@ class _HomeViewState extends State<HomeView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Dashboard"),
+        title: Text(
+          "Dashboard",
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 24),
+        ),
         actions: [
           Stack(
             children: [
@@ -93,9 +97,10 @@ class _HomeViewState extends State<HomeView> {
                   delay: 100,
                   child: Text(
                     "Quick Actions",
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -160,7 +165,8 @@ class _HomeViewState extends State<HomeView> {
                     children: [
                       Text(
                         "Recent Files",
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        style: GoogleFonts.outfit(
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -261,76 +267,111 @@ class _HomeViewState extends State<HomeView> {
        usedString = "${(usedBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
     }
 
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                 Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(LucideIcons.cloud, color: Theme.of(context).colorScheme.primary),
-                 ),
-                 const SizedBox(width: 16),
-                 Text(
-                   "Free Plan",
-                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                     fontWeight: FontWeight.bold,
-                   ),
-                 ),
-                 const Spacer(),
-                 TextButton(
-                   onPressed: () {
-                       Navigator.push(context, MaterialPageRoute(builder: (_) => const UpgradeScreen()));
-                   }, 
-                   child: const Text("Upgrade", style: TextStyle(fontWeight: FontWeight.bold)),
-                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            ClipRRect(
-               borderRadius: BorderRadius.circular(8),
-               child: LinearProgressIndicator(
-                 value: progress,
-                 minHeight: 12,
-                 backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                 color: Theme.of(context).colorScheme.primary,
-               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                 Text(
-                   "$usedString used",
-                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                 ),
-                 Text(
-                   "5 GB total",
-                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
-                 ),
-              ],
-            ),
-          ],
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade800, Colors.purple.shade800],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.purple.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Row(
+            children: [
+               Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(LucideIcons.cloud, color: Colors.white),
+               ),
+               const SizedBox(width: 16),
+               Text(
+                 "Free Plan",
+                 style: GoogleFonts.outfit(
+                   color: Colors.white,
+                   fontSize: 20,
+                   fontWeight: FontWeight.bold,
+                 ),
+               ),
+               const Spacer(),
+               TextButton(
+                 onPressed: () {
+                     Navigator.push(context, MaterialPageRoute(builder: (_) => const UpgradeScreen()));
+                 }, 
+                 style: TextButton.styleFrom(
+                   foregroundColor: Colors.white,
+                   backgroundColor: Colors.white.withOpacity(0.1),
+                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                 ),
+                 child: const Text("Upgrade", style: TextStyle(fontWeight: FontWeight.bold)),
+               ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          ClipRRect(
+             borderRadius: BorderRadius.circular(8),
+             child: LinearProgressIndicator(
+               value: progress,
+               minHeight: 8,
+               backgroundColor: Colors.white.withOpacity(0.1),
+               color: Colors.white,
+             ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+               Text(
+                 "$usedString used",
+                 style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600),
+               ),
+               Text(
+                 "5 GB total",
+                 style: GoogleFonts.outfit(color: Colors.white54),
+               ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   // Actions Logic
   Future<void> _handleUpload() async {
-      await _fileService.pickAndSaveFile();
+      await _fileService.pickAndSaveFile(
+        onFilePicked: (name, size) {
+           if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(
+               SnackBar(
+                 content: Row(
+                   children: [
+                     const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                     const SizedBox(width: 16),
+                     Expanded(child: Text("Uploading $name...")),
+                   ],
+                 ),
+                 duration: const Duration(seconds: 10), // Keep it visible during upload
+               ),
+             );
+           }
+        },
+      );
       if (mounted) {
+           ScaffoldMessenger.of(context).hideCurrentSnackBar(); // Hide "Uploading"
            ScaffoldMessenger.of(context).showSnackBar(
-               const SnackBar(content: Text("File uploaded successfully")),
+               const SnackBar(content: Text("File uploaded successfully"), backgroundColor: Colors.green),
            );
       }
   }
@@ -454,39 +495,46 @@ class _HomeViewState extends State<HomeView> {
     Color color,
     VoidCallback onTap,
   ) {
-    return Material(
-      color: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
-        ),
-        borderRadius: BorderRadius.circular(16),
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 24),
                 ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                const SizedBox(height: 12),
+                Text(
+                  label,
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -494,37 +542,49 @@ class _HomeViewState extends State<HomeView> {
   }
 
   Widget _buildFileTile(BuildContext context, FileItem file) {
-    return Card(
+    bool isApk = file.name.toLowerCase().endsWith('.apk');
+
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      color: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
-        ),
-        borderRadius: BorderRadius.circular(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color:
-                file.color?.withValues(alpha: 0.2) ??
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+            color: isApk
+                ? Colors.blue.withOpacity(0.1)
+                : (file.color?.withOpacity(0.1) ?? Colors.grey.withOpacity(0.1)),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
-            _getIconForType(file.type),
-            color: file.color ?? Theme.of(context).colorScheme.primary,
+            isApk ? LucideIcons.cloud : _getIconForType(file.type),
+            color: isApk
+                ? Colors.blue
+                : (file.color ?? Colors.grey),
+            size: 24,
           ),
         ),
         title: Text(
           file.name,
-          style: const TextStyle(fontWeight: FontWeight.w500),
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
         ),
-        subtitle: Text("${file.size} • ${_formatDate(file.modified)}"),
+        subtitle: Text(
+          "${file.size} • ${_formatDate(file.modified)}",
+          style: GoogleFonts.outfit(color: Colors.grey),
+        ),
         trailing: IconButton(
-          icon: const Icon(LucideIcons.share2, size: 20),
+          icon: const Icon(LucideIcons.share2, size: 20, color: Colors.grey),
           tooltip: "Share",
           onPressed: () => _shareFile(file),
         ),

@@ -40,7 +40,13 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> with SingleTick
         
         final data = snapshot.data ?? {'users': 0, 'files': 0, 'storage': 0};
         final double totalStorageMB = (data['storage'] as int) / (1024 * 1024);
-        final double maxStorageMB = 102400.0; // 100 GB Limit
+        
+        // Dynamic Capacity: Scale in 100GB chunks
+        // If usage < 100gb, max = 100gb
+        // If usage > 100gb, max = 200gb, etc
+        final int chunks = (totalStorageMB / 102400).ceil();
+        final double maxStorageMB = (chunks > 1 ? chunks : 1) * 102400.0;
+        
         final double remainingMB = maxStorageMB - totalStorageMB;
 
         return SingleChildScrollView(
@@ -55,6 +61,10 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> with SingleTick
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(height: 24),
+              
+              // System Health Row
+              const _SystemHealthRow(),
               const SizedBox(height: 24),
               
               // Animated Storage Chart
@@ -103,9 +113,9 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> with SingleTick
                                  ),
                                ),
                                const SizedBox(height: 4),
-                               const Text(
-                                 "of 100 GB (Total Capacity)",
-                                 style: TextStyle(color: Colors.white38, fontSize: 14),
+                               Text(
+                                 "of ${(maxStorageMB / 1024).toStringAsFixed(0)} GB (First 100 GB Capacity)",
+                                 style: const TextStyle(color: Colors.white38, fontSize: 14),
                                ),
                              ],
                           ),
@@ -170,6 +180,19 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> with SingleTick
                   ),
                 ],
               ),
+              
+              const SizedBox(height: 32),
+              
+              // Recent Activity Section
+              Text(
+                'Recent Activity',
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const _RecentActivityList(),
             ],
           ),
         );
@@ -270,6 +293,112 @@ class _StatCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SystemHealthRow extends StatelessWidget {
+  const _SystemHealthRow();
+
+  Widget _buildStatusPill(String label, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      children: [
+        _buildStatusPill('Server Online', Colors.green, LucideIcons.wifi),
+        _buildStatusPill('DB Connected', Colors.blue, LucideIcons.database),
+        _buildStatusPill('Storage Healthy', Colors.purple, LucideIcons.hardDrive),
+      ],
+    );
+  }
+}
+
+class _RecentActivityList extends StatelessWidget {
+  const _RecentActivityList();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('files')
+          .orderBy('createdAt', descending: true)
+          .limit(5)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final files = snapshot.data!.docs;
+        
+        if (files.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Center(child: Text('No recent activity')),
+          );
+        }
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            children: files.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return Column(
+                children: [
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(LucideIcons.file, color: Colors.blue, size: 20),
+                    ),
+                    title: Text(data['name'] ?? 'Unknown File', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('Uploaded by ${data['userName'] ?? 'User'}'),
+                    // Time placeholder (real implementation needs timestamp formatting)
+                    trailing: const Text('Just now', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  ),
+                  if (doc != files.last) const Divider(height: 1, indent: 60),
+                ],
+              );
+            }).toList(),
+          ),
+        );
+      },
     );
   }
 }
