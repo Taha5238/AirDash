@@ -8,7 +8,9 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../files/data/repositories/offline_file_service.dart';
 import '../../../files/data/models/file_item.dart';
-
+import '../../../notifications/presentation/pages/notification_screen.dart';
+import '../../../notifications/data/models/notification_model.dart';
+import '../../../notifications/data/services/notification_service.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -21,12 +23,56 @@ class _HomeViewState extends State<HomeView> {
   final OfflineFileService _fileService = OfflineFileService();
 
   @override
+  void initState() {
+    super.initState();
+    // Init Notifications
+    NotificationService().init();
+    
+    // Check for Admin Deletions on start
+    _fileService.syncCloudDeletions().then((_) {
+       if (mounted) setState(() {}); 
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Dashboard"),
         actions: [
-          IconButton(icon: const Icon(LucideIcons.bell), onPressed: () {}),
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(LucideIcons.bell), 
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationScreen()));
+                }
+              ),
+              // Unread Badge
+              ValueListenableBuilder(
+                valueListenable: Hive.box<NotificationModel>('notificationsBox').listenable(),
+                builder: (_, Box<NotificationModel> box, __) {
+                   final unread = box.values.where((n) => !n.isRead).length;
+                   if (unread == 0) return const SizedBox.shrink();
+                   return Positioned(
+                     right: 8,
+                     top: 8,
+                     child: Container(
+                       padding: const EdgeInsets.all(4),
+                       decoration: const BoxDecoration(
+                         color: Colors.red,
+                         shape: BoxShape.circle,
+                       ),
+                       child: Text(
+                         unread > 9 ? '9+' : unread.toString(),
+                         style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                       ),
+                     ),
+                   );
+                },
+              ),
+            ],
+          ),
           const SizedBox(width: 16),
         ],
       ),

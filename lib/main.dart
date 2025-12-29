@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/splash/presentation/pages/splash_screen.dart';
+import 'features/notifications/data/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +17,10 @@ void main() async {
   
   await Hive.initFlutter();
   await Hive.openBox('filesBox');
+  
+  // Init Notifications (Register Adapter + Open Box)
+  await NotificationService().init();
+
   runApp(const AirDashApp());
 }
 

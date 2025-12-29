@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hive_flutter/hive_flutter.dart';
@@ -17,6 +18,7 @@ import 'package:universal_html/html.dart' as html;
 import '../models/file_item.dart';
 
 import '../../../auth/data/services/auth_service.dart';
+import '../../../notifications/data/services/notification_service.dart';
 
 class OfflineFileService {
   Box get _box => Hive.box('filesBox');
@@ -55,6 +57,7 @@ class OfflineFileService {
   // Pick and save a file
   Future<FileItem?> pickAndSaveFile() async {
     final currentUserUid = AuthService().currentUserUid;
+    final String? userName = AuthService().currentUserName; // Get name for metadata
     if (currentUserUid == null) {
         print("Cannot save file: No user logged in");
         return null;
@@ -95,12 +98,37 @@ class OfflineFileService {
           modified: DateTime.now(),
           type: _getTypeFromName(fileName),
           localPath: newPath,
-          synced: false,
+          synced: true, // Mark as synced since we send to Firestore
           content: content,
-          userId: currentUserUid, // Attach User ID
+          userId: currentUserUid, 
         );
 
+        // 1. Save Local (Hive)
         await _box.put(id, newItem.toMap());
+        
+        // 2. Sync Metadata to Firestore (For Admin Visibility) & Update User Stats
+        final batch = FirebaseFirestore.instance.batch();
+        final fileRef = FirebaseFirestore.instance.collection('files').doc(id);
+        final userRef = FirebaseFirestore.instance.collection('users').doc(currentUserUid);
+
+        batch.set(fileRef, {
+          'id': id,
+          'name': fileName,
+          'size': size,
+          'type': newItem.type.index,
+          'userId': currentUserUid,
+          'userName': userName,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        // Atomic Increment for User Stats
+        batch.update(userRef, {
+          'storageUsed': FieldValue.increment(size),
+          'fileCount': FieldValue.increment(1),
+        });
+
+        await batch.commit();
+
         return newItem;
       }
       return null;
@@ -113,6 +141,7 @@ class OfflineFileService {
   // Save Generated PDF
   Future<FileItem?> savePdfFile(Uint8List bytes, String fileName) async {
       final currentUserUid = AuthService().currentUserUid;
+      final String? userName = AuthService().currentUserName;
       if (currentUserUid == null) return null;
 
       try {
@@ -134,12 +163,36 @@ class OfflineFileService {
            modified: DateTime.now(),
            type: FileType.document, // PDF is a document
            localPath: newPath,
-           synced: false,
-           content: kIsWeb ? bytes : null, // Web uses content, Native uses path (but we can cache content if needed, keeping it null for performance on native unless requested)
+           synced: true,
+           content: kIsWeb ? bytes : null, 
            userId: currentUserUid,
          );
 
+         // 1. Save Local
          await _box.put(id, newItem.toMap());
+         
+         // 2. Sync to Firestore & Update User Stats
+         final batch = FirebaseFirestore.instance.batch();
+         final fileRef = FirebaseFirestore.instance.collection('files').doc(id);
+         final userRef = FirebaseFirestore.instance.collection('users').doc(currentUserUid);
+
+         batch.set(fileRef, {
+            'id': id,
+            'name': fileName,
+            'size': size,
+            'type': newItem.type.index,
+            'userId': currentUserUid,
+            'userName': userName,
+            'createdAt': FieldValue.serverTimestamp(),
+         });
+
+         batch.update(userRef, {
+            'storageUsed': FieldValue.increment(size),
+            'fileCount': FieldValue.increment(1),
+         });
+
+         await batch.commit();
+
          return newItem;
       } catch (e) {
           print("Error saving PDF: $e");
@@ -164,6 +217,24 @@ class OfflineFileService {
         }
       }
       await _box.delete(id);
+      
+      // Sync Delete in Firestore
+      // Sync Delete in Firestore & Decrement User Stats
+      try {
+        final batch = FirebaseFirestore.instance.batch();
+        final fileRef = FirebaseFirestore.instance.collection('files').doc(id);
+        final userRef = FirebaseFirestore.instance.collection('users').doc(item.userId);
+
+        batch.delete(fileRef);
+        batch.update(userRef, {
+           'storageUsed': FieldValue.increment(-_parseSize(item.size)),
+           'fileCount': FieldValue.increment(-1),
+        });
+
+        await batch.commit();
+      } catch(e) {
+        print("Error deleting from cloud: $e"); 
+      }
     }
   }
 
@@ -333,6 +404,43 @@ class OfflineFileService {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  // Sync: Check for Admin Deletions
+  Future<void> syncCloudDeletions() async {
+    final currentUserUid = AuthService().currentUserUid;
+    if (currentUserUid == null) return;
+
+    try {
+      // 1. Get all file IDs currently in Firestore for this user
+      final query = await FirebaseFirestore.instance
+          .collection('files')
+          .where('userId', isEqualTo: currentUserUid)
+          .get();
+      
+      final Set<String> cloudIds = query.docs.map((d) => d.id).toSet();
+
+      // 2. Iterate local files
+      final localFiles = getAllFiles(); // user filtered
+      
+      for (var item in localFiles) {
+        // If local item claims to be synced (meaning it WAS sent to cloud)
+        // BUT it is missing from cloudIds, it implies Admin deleted it.
+        // Or it wasn't synced yet (but .synced=true implies it was).
+        if (item.synced && !cloudIds.contains(item.id)) {
+             print("Sync: Deleting local file ${item.name} as it was removed from cloud.");
+             await deleteFile(item.id); 
+             
+             // Notify User
+             await NotificationService().addNotification(
+               title: 'File Removed by Admin', 
+               body: 'Your file "${item.name}" was removed by an administrator.'
+             );
+        }
+      }
+    } catch (e) {
+      print("Sync error: $e");
+    }
   }
 }
 

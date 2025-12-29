@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/utils/responsive_layout.dart';
 import '../../../dashboard/presentation/pages/dashboard_screen.dart';
+import '../../../admin/presentation/pages/admin_dashboard.dart';
 import '../../data/services/auth_service.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
@@ -25,23 +27,52 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
-      final success = await _authService.signIn(
-        _emailController.text,
-        _passwordController.text,
-      );
+      try {
+         await _authService.signIn(
+          _emailController.text,
+          _passwordController.text,
+        );
 
-      setState(() => _isLoading = false);
+        if (mounted) {
+           final role = await _authService.getUserRole();
+           setState(() => _isLoading = false);
+           
+           if (mounted) {
+             if (role == 'admin') {
+               Navigator.pushReplacement(
+                 context,
+                 MaterialPageRoute(builder: (_) => const AdminDashboard()),
+               );
+             } else {
+               Navigator.pushReplacement(
+                 context,
+                 MaterialPageRoute(builder: (_) => const DashboardScreen()),
+               );
+             }
+           }
+        }
+      } on FirebaseAuthException catch (e) {
+        setState(() => _isLoading = false);
+        if (mounted) {
+          String message = 'Login failed';
+          if (e.code == 'user-not-found') message = 'No user found for that email.';
+          else if (e.code == 'wrong-password') message = 'Wrong password provided.';
+          else if (e.code == 'user-blocked') message = e.message ?? 'Blocked';
+          else message = e.message ?? 'An error occurred';
 
-      if (mounted) {
-        if (success) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const DashboardScreen()),
-          );
-        } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Invalid Details or User not found'),
+            SnackBar(
+              content: Text(message),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        setState(() => _isLoading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
               backgroundColor: Colors.red,
             ),
           );

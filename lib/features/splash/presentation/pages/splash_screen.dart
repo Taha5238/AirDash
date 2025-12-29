@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../auth/presentation/pages/login_screen.dart';
 import '../../../dashboard/presentation/pages/dashboard_screen.dart';
+import '../../../admin/presentation/pages/admin_dashboard.dart';
 import '../../../auth/data/services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -27,10 +28,20 @@ class _SplashScreenState extends State<SplashScreen> {
     if (mounted) {
        final user = AuthService().currentUser;
        if (user != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const DashboardScreen()),
-          );
+          final role = await AuthService().getUserRole();
+          if (mounted) {
+            if (role == 'admin') {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const AdminDashboard()),
+              );
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const DashboardScreen()),
+              );
+            }
+          }
        } else {
           Navigator.pushReplacement(
             context,
