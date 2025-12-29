@@ -4,7 +4,10 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 
 class AdminFileView extends StatelessWidget {
-  const AdminFileView({super.key});
+  final String? userId;
+  final String? userName;
+
+  const AdminFileView({super.key, this.userId, this.userName});
 
   String _formatSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
@@ -23,8 +26,22 @@ class AdminFileView extends StatelessWidget {
     // it implies files are online. If the app was migrated to Hive only (offline), this is contradictory.
     // However, I will implement a Firestore listener for a 'files' collection.
     
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('files').orderBy('createdAt', descending: true).snapshots(),
+    Query query = FirebaseFirestore.instance.collection('files');
+    if (userId != null) {
+      query = query.where('userId', isEqualTo: userId);
+    }
+    // Note: complex sorting with filtering might require index. Fallback to client sort if needed or just remove orderBy for specific user.
+    // For simplicity, we remove orderBy when filtering to avoid index errors, or ensure index exists.
+    // Let's rely on client side filtering/sorting if list is small, or simple query.
+    // Actually, simple query first.
+    
+    return Scaffold(
+      appBar: userId != null ? AppBar(
+        title: Text(userName != null ? '$userName\'s Files' : 'User Files'),
+        leading: const BackButton(),
+      ) : null,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: query.snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) return const Center(child: Text('Error loading files'));
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
@@ -93,6 +110,7 @@ class AdminFileView extends StatelessWidget {
           },
         );
       },
+    ),
     );
   }
 }

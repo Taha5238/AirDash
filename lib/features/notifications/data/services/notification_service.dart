@@ -10,9 +10,17 @@ class NotificationService {
       Hive.registerAdapter(NotificationModelAdapter());
     }
     await Hive.openBox<NotificationModel>(_boxName);
+    await Hive.openBox('settingsBox'); // Open settings box
   }
 
   Box<NotificationModel> get _box => Hive.box<NotificationModel>(_boxName);
+  Box get _settingsBox => Hive.box('settingsBox');
+
+  bool get areNotificationsEnabled => _settingsBox.get('notificationsEnabled', defaultValue: true);
+
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    await _settingsBox.put('notificationsEnabled', enabled);
+  }
 
   // Get notifications (Reverse chronological)
   List<NotificationModel> getNotifications() {
@@ -26,6 +34,8 @@ class NotificationService {
 
   // Add Notification
   Future<void> addNotification({required String title, required String body}) async {
+    if (!areNotificationsEnabled) return; // Respect preference
+
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final notification = NotificationModel(
       id: id,

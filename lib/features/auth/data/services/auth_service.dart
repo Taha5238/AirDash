@@ -24,6 +24,17 @@ class AuthService {
   // Sign Up with Email & Password
   Future<void> signUp(String name, String email, String password, String phoneNumber) async {
     try {
+      // 0. Check if Registration is Enabled
+      final configDoc = await _firestore.collection('config').doc('app_settings').get();
+      if (configDoc.exists) {
+        final bool isEnabled = configDoc.data()?['registrationEnabled'] ?? true; // Default true
+        if (!isEnabled) {
+           throw FirebaseAuthException(
+             code: 'registration-disabled', 
+             message: 'New user registrations are currently disabled by the administrator.'
+           );
+        }
+      }
       // 1. Create Auth User
       final UserCredential cred = await _auth.createUserWithEmailAndPassword(
         email: email, 

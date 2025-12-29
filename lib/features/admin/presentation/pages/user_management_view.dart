@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'admin_file_view.dart';
 
 class UserManagementView extends StatefulWidget {
   const UserManagementView({super.key});
@@ -97,6 +98,17 @@ class _UserManagementViewState extends State<UserManagementView> {
         
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AdminFileView(
+                            userId: data['uid'],
+                            userName: data['name'],
+                          )
+                        ),
+                      );
+                    },
                     leading: CircleAvatar(
                       backgroundColor: isAdmin ? Colors.purple.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
                       child: Icon(

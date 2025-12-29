@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../auth/data/services/auth_service.dart';
 import '../../../auth/presentation/pages/login_screen.dart';
+import '../../../../core/theme/theme_controller.dart';
+import '../../../notifications/data/services/notification_service.dart';
 
 class AdminSettingsView extends StatefulWidget {
   const AdminSettingsView({super.key});
@@ -22,6 +25,8 @@ class _AdminSettingsViewState extends State<AdminSettingsView> {
   void initState() {
     super.initState();
     _fetchSettings();
+    _darkMode = ThemeController().themeMode.value == ThemeMode.dark;
+    // _notificationsEnabled is loaded in _fetchSettings to ensure Hive box is open
   }
 
   Future<void> _fetchSettings() async {
@@ -39,6 +44,20 @@ class _AdminSettingsViewState extends State<AdminSettingsView> {
       print("Error fetching settings: $e");
       setState(() => _isLoading = false);
     }
+    
+    // Load local settings (Safe for Hot Reload)
+    try {
+      if (!Hive.isBoxOpen('settingsBox')) {
+        await Hive.openBox('settingsBox');
+      }
+      if (mounted) {
+        setState(() {
+           _notificationsEnabled = NotificationService().areNotificationsEnabled;
+        });
+      }
+    } catch (e) {
+      print("Error loading local settings: $e");
+    }
   }
 
   Future<void> _updateSetting(String key, dynamic value) async {
@@ -48,8 +67,15 @@ class _AdminSettingsViewState extends State<AdminSettingsView> {
         SetOptions(merge: true),
       );
     } catch (e) {
+      // Revert change on error
+      setState(() => _registrationEnabled = !value);
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save setting: $e')),
+        SnackBar(
+          content: Text('Failed to save setting: Permission Denied.\nSee "FIREBASE_RULES.md" to fix this.'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 10),
+        ),
       );
     }
   }
@@ -74,8 +100,8 @@ class _AdminSettingsViewState extends State<AdminSettingsView> {
           secondary: const Icon(LucideIcons.userPlus),
           value: _registrationEnabled,
           onChanged: (val) {
-            setState(() => _registrationEnabled = val);
-            _updateSetting('registrationEnabled', val);
+             setState(() => _registrationEnabled = val);
+             _updateSetting('registrationEnabled', val);
           },
         ),
          const Divider(),
@@ -89,7 +115,7 @@ class _AdminSettingsViewState extends State<AdminSettingsView> {
           value: _darkMode,
           onChanged: (val) {
             setState(() => _darkMode = val);
-            // In a real app, use a ThemeProvider
+            ThemeController().setTheme(val ? ThemeMode.dark : ThemeMode.light);
           },
         ),
         SwitchListTile(
@@ -98,6 +124,7 @@ class _AdminSettingsViewState extends State<AdminSettingsView> {
           value: _notificationsEnabled,
           onChanged: (val) {
              setState(() => _notificationsEnabled = val);
+             NotificationService().setNotificationsEnabled(val);
           },
         ),
         const Divider(),
