@@ -35,6 +35,11 @@ class AuthService {
         await cred.user!.updateDisplayName(name);
         await cred.user!.reload(); 
         
+        // 2b. Send Verification Email
+        if (!cred.user!.emailVerified) {
+           await cred.user!.sendEmailVerification();
+        }
+
         // 3. Create User Document in Firestore
         await _firestore.collection('users').doc(cred.user!.uid).set({
           'uid': cred.user!.uid,
@@ -43,6 +48,9 @@ class AuthService {
           'phoneNumber': phoneNumber,
           'role': 'user', // Default role
           'accountStatus': 'active', // Default status
+          'plan': 'free', // New: Plan field
+          'storageLimit': 5368709120, // New: 5GB in bytes
+          'storageUsed': 0, // Initialize storage used
           'createdAt': FieldValue.serverTimestamp(),
         });
       }

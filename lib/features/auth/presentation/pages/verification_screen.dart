@@ -23,8 +23,15 @@ class _VerificationScreenState extends State<VerificationScreen> {
       if (user != null) {
         await user.sendEmailVerification();
         if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text('Verification email sent! Check your inbox.')),
+           showDialog(
+             context: context,
+             builder: (ctx) => AlertDialog(
+               title: const Text('Email Sent'),
+               content: const Text('We have sent a verification email. \n\nPlease check your Inbox and SPAM folder.'),
+               actions: [
+                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))
+               ],
+             ),
            );
         }
       }

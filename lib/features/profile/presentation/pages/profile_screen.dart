@@ -4,8 +4,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'help_support_screen.dart';
+import 'privacy_policy_screen.dart';
 import '../../../auth/data/services/auth_service.dart';
 import '../../../auth/presentation/pages/login_screen.dart';
+import '../../../auth/presentation/pages/verification_screen.dart';
 import '../../../../core/theme/theme_controller.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -141,8 +144,10 @@ class ProfileScreen extends StatelessWidget {
               title: "Verify Account",
               onTap: () async {
                   if (authUser != null && !authUser.emailVerified) {
-                    await authUser.sendEmailVerification();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verification email sent!')));
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const VerificationScreen()),
+                    );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Already verified.')));
                   }
@@ -189,13 +194,13 @@ class ProfileScreen extends StatelessWidget {
               context,
               icon: LucideIcons.helpCircle,
               title: "Help & Support",
-              onTap: () {},
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpSupportScreen())),
             ),
              _buildSettingsTile(
               context,
               icon: LucideIcons.shieldCheck,
               title: "Privacy Policy",
-              onTap: () {},
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
             ),
 
             const SizedBox(height: 30),
