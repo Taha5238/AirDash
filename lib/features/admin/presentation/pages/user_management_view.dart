@@ -93,6 +93,7 @@ class _UserManagementViewState extends State<UserManagementView> {
                   final isAdmin = data['role'] == 'admin';
                   final storageUsed = data['storageUsed'] ?? 0;
                   final fileCount = data['fileCount'] ?? 0;
+                  final isVerified = data['isVerified'] == true;
         
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -124,7 +125,15 @@ class _UserManagementViewState extends State<UserManagementView> {
                         ),
                       ],
                     ),
-                    trailing: PopupMenuButton<String>(
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                         if (isVerified) 
+                           const Padding(
+                             padding: EdgeInsets.only(right: 8.0),
+                             child: Icon(LucideIcons.badgeCheck, size: 20, color: Colors.blue),
+                           ),
+                         PopupMenuButton<String>(
                       onSelected: (value) async {
                         if (value == 'toggle_block') {
                           await userDoc.reference.update({
@@ -172,6 +181,8 @@ class _UserManagementViewState extends State<UserManagementView> {
                           ),
                       ],
                     ),
+                  ],
+                ),
                   );
                 },
               );

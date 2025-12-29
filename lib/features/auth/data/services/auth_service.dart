@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class AuthService {
   // Singleton instance
@@ -20,7 +22,7 @@ class AuthService {
   String? get currentUserUid => _auth.currentUser?.uid;
 
   // Sign Up with Email & Password
-  Future<void> signUp(String name, String email, String password) async {
+  Future<void> signUp(String name, String email, String password, String phoneNumber) async {
     try {
       // 1. Create Auth User
       final UserCredential cred = await _auth.createUserWithEmailAndPassword(
@@ -38,6 +40,7 @@ class AuthService {
           'uid': cred.user!.uid,
           'name': name,
           'email': email,
+          'phoneNumber': phoneNumber,
           'role': 'user', // Default role
           'accountStatus': 'active', // Default status
           'createdAt': FieldValue.serverTimestamp(),
@@ -114,5 +117,71 @@ class AuthService {
       print("Error fetching role: $e");
     }
     return null;
+  }
+  // Update Profile Picture
+  Future<void> updateProfilePicture(File imageFile) async {
+    try {
+      if (currentUser == null) return;
+      
+      final String uid = currentUser!.uid;
+      final Reference storageRef = FirebaseStorage.instance
+          .ref()
+          .child('profile_images')
+          .child('$uid.jpg');
+          
+      // Upload
+      await storageRef.putFile(imageFile);
+      
+      // Get URL
+      final String downloadUrl = await storageRef.getDownloadURL();
+      
+      // Update Auth Profile
+      await currentUser!.updatePhotoURL(downloadUrl);
+      
+      // Update Firestore Profile (Redundancy)
+      await _firestore.collection('users').doc(uid).update({
+        'photoUrl': downloadUrl,
+      });
+      
+    } catch (e) {
+      print("Error uploading profile picture: $e");
+      rethrow;
+    }
+  }
+
+  // Sync Verification Status to Firestore
+  Future<void> syncVerificationStatus() async {
+    if (currentUser == null) return;
+    try {
+      if (currentUser!.emailVerified) {
+        await _firestore.collection('users').doc(currentUser!.uid).update({
+          'isVerified': true,
+        });
+      }
+    } catch (e) {
+      print("Error syncing verification status: $e");
+      // Don't rethrow, strictly optional sync
+    }
+  }
+
+  // Update Phone Number
+
+  // Update Phone Number
+  Future<void> updatePhoneNumber(String newNumber) async {
+    if (currentUser == null) return;
+    try {
+       await _firestore.collection('users').doc(currentUser!.uid).update({
+         'phoneNumber': newNumber,
+       });
+    } catch (e) {
+      print("Error updating phone number: $e");
+      rethrow;
+    }
+  }
+
+  // Get User Stream (for real-time profile updates)
+  Stream<DocumentSnapshot> getUserStream() {
+    if (currentUser == null) return const Stream.empty();
+    return _firestore.collection('users').doc(currentUser!.uid).snapshots();
   }
 }

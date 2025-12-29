@@ -17,6 +17,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
@@ -31,6 +32,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           _nameController.text,
           _emailController.text,
           _passwordController.text,
+          _phoneController.text,
         );
 
         setState(() => _isLoading = false);
@@ -126,6 +128,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Full Name',
                         prefixIcon: Icon(LucideIcons.user, size: 20),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Phone Field
+                    TextFormField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      validator: (value) =>
+                          value!.isEmpty ? 'Please enter phone number' : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Phone Number',
+                        prefixIcon: Icon(LucideIcons.phone, size: 20),
                       ),
                     ),
                     const SizedBox(height: 16),

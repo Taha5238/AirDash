@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../auth/data/services/auth_service.dart';
 import '../../../auth/presentation/pages/login_screen.dart';
 import '../../../../core/theme/theme_controller.dart';
@@ -11,10 +14,25 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final String userName = user?.displayName ?? 'User';
-    final String userEmail = user?.email ?? 'No Email';
-    final bool isVerified = user?.emailVerified ?? false;
+    return StreamBuilder<DocumentSnapshot>(
+      stream: AuthService().getUserStream(),
+      builder: (context, snapshot) {
+        // Base user info from Auth (fallback)
+        final authUser = FirebaseAuth.instance.currentUser;
+        String userName = authUser?.displayName ?? 'User';
+        String userEmail = authUser?.email ?? 'No Email';
+        String? photoUrl = authUser?.photoURL;
+        String phoneNumber = ''; // Default
+        bool isVerified = authUser?.emailVerified ?? false;
+
+        // Overlay Firestore data if available
+        if (snapshot.hasData && snapshot.data!.exists) {
+           final data = snapshot.data!.data() as Map<String, dynamic>;
+           userName = data['name'] ?? userName;
+           // userEmail = data['email'] ?? userEmail; // Usually same
+           photoUrl = data['photoUrl'] ?? photoUrl;
+           phoneNumber = data['phoneNumber'] ?? '';
+        }
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -44,14 +62,34 @@ class ProfileScreen extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                   CircleAvatar(
-                     radius: 35,
-                     backgroundColor: Colors.white,
-                     child: CircleAvatar(
-                       radius: 32,
-                       backgroundImage: NetworkImage(user?.photoURL ?? 'https://i.pravatar.cc/300'),
-                       child: user?.photoURL == null ? const Icon(LucideIcons.user, size: 30) : null,
-                     ),
+                   Stack(
+                     children: [
+                       CircleAvatar(
+                         radius: 35,
+                         backgroundColor: Colors.white,
+                         child: CircleAvatar(
+                           radius: 32,
+
+                           backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+                           child: photoUrl == null ? const Icon(LucideIcons.user, size: 30, color: Colors.grey) : null,
+                         ),
+                       ),
+                       Positioned(
+                         bottom: 0,
+                         right: 0,
+                         child: GestureDetector(
+                           onTap: () => _showImagePicker(context),
+                           child: Container(
+                             padding: const EdgeInsets.all(4),
+                             decoration: const BoxDecoration(
+                               color: Colors.white,
+                               shape: BoxShape.circle,
+                             ),
+                             child: const Icon(LucideIcons.camera, size: 14, color: Colors.black87),
+                           ),
+                         ),
+                       ),
+                     ],
                    ),
                    const SizedBox(width: 16),
                    Expanded(
@@ -80,7 +118,7 @@ class ProfileScreen extends StatelessWidget {
                      icon: const Icon(LucideIcons.edit2, color: Colors.white),
                      onPressed: () {
                         // TODO: Edit Profile Dialog
-                        _showEditProfileDialog(context, userName, user);
+                        _showEditProfileDialog(context, userName, phoneNumber, authUser);
                      },
                    )
                 ],
@@ -95,15 +133,15 @@ class ProfileScreen extends StatelessWidget {
               context,
               icon: LucideIcons.user,
               title: "Personal Information",
-              onTap: () => _showEditProfileDialog(context, userName, user),
+              onTap: () => _showEditProfileDialog(context, userName, phoneNumber, authUser),
             ),
             _buildSettingsTile(
               context,
               icon: LucideIcons.badgeCheck,
               title: "Verify Account",
               onTap: () async {
-                  if (user != null && !user.emailVerified) {
-                    await user.sendEmailVerification();
+                  if (authUser != null && !authUser.emailVerified) {
+                    await authUser.sendEmailVerification();
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verification email sent!')));
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Already verified.')));
@@ -194,6 +232,9 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
     );
+
+      },
+    );
   }
 
   Widget _buildSectionHeader(BuildContext context, String title) {
@@ -243,25 +284,126 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  void _showEditProfileDialog(BuildContext context, String currentName, User? user) {
+  Future<void> _showImagePicker(BuildContext context) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Change Profile Photo', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildPickerOption(context, icon: LucideIcons.camera, label: 'Camera', source: ImageSource.camera),
+                _buildPickerOption(context, icon: LucideIcons.image, label: 'Gallery', source: ImageSource.gallery),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPickerOption(BuildContext context, {required IconData icon, required String label, required ImageSource source}) {
+    return GestureDetector(
+      onTap: () async {
+        Navigator.pop(context); // Close sheet
+        final ImagePicker picker = ImagePicker();
+        final XFile? image = await picker.pickImage(source: source, imageQuality: 70);
+        
+        if (image != null) {
+          _uploadImage(context, File(image.path));
+        }
+      },
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 30,
+            backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+            child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _uploadImage(BuildContext context, File file) async {
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await AuthService().updateProfilePicture(file);
+      Navigator.pop(context); // Close loader
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile picture updated!')));
+      
+      // Force Rebuild/Update UI? 
+      // Since it's a StatelessWidget, we might rely on the AuthService stream or just navigate/replace.
+      // Or better, convert ProfileScreen to StatefulWidget to setState or rely on AuthChanges.
+      // For now, let's just show the success message. The user object in build() is synchronous. 
+      // A quick hack for a StatelessWidget to refresh is to push replacement or just let user re-enter.
+      // Ideally, ProfileScreen should listen to Auth stream.
+    } catch (e) {
+      Navigator.pop(context); // Close loader
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  void _showEditProfileDialog(BuildContext context, String currentName, String currentPhone, User? user) {
       if (user == null) return;
-      final controller = TextEditingController(text: currentName);
+      final nameController = TextEditingController(text: currentName);
+      final phoneController = TextEditingController(text: currentPhone);
+      
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
            title: const Text('Edit Profile'),
-           content: TextField(
-             controller: controller,
-             decoration: const InputDecoration(labelText: 'Display Name'),
+           content: Column(
+             mainAxisSize: MainAxisSize.min,
+             children: [
+               TextField(
+                 controller: nameController,
+                 decoration: const InputDecoration(labelText: 'Display Name'),
+               ),
+               const SizedBox(height: 12),
+               TextField(
+                 controller: phoneController,
+                 decoration: const InputDecoration(labelText: 'Phone Number'),
+                 keyboardType: TextInputType.phone,
+               ),
+             ],
            ),
            actions: [
              TextButton(onPressed: ()=>Navigator.pop(context), child: const Text('Cancel')),
              FilledButton(
                onPressed: () async {
                   try {
-                    await user.updateDisplayName(controller.text);
+                    // Update Name
+                    if (nameController.text != currentName) {
+                       await user.updateDisplayName(nameController.text);
+                       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+                         'name': nameController.text
+                       });
+                    }
+                    
+                    // Update Phone (Firestore only)
+                    if (phoneController.text != currentPhone) {
+                       await AuthService().updatePhoneNumber(phoneController.text);
+                    }
+
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated! (Switch tabs to see changes)')));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated!')));
                   } catch (e) {
                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
                   }

@@ -6,6 +6,7 @@ import '../../../../core/utils/responsive_layout.dart';
 import '../../../dashboard/presentation/pages/dashboard_screen.dart';
 import '../../../admin/presentation/pages/admin_dashboard.dart';
 import '../../data/services/auth_service.dart';
+import '../../../splash/presentation/pages/splash_screen.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -41,12 +42,16 @@ class _LoginScreenState extends State<LoginScreen> {
              if (role == 'admin') {
                Navigator.pushReplacement(
                  context,
-                 MaterialPageRoute(builder: (_) => const AdminDashboard()),
+                 MaterialPageRoute(
+                   builder: (_) => const SplashScreen(nextScreen: AdminDashboard()),
+                 ),
                );
              } else {
                Navigator.pushReplacement(
                  context,
-                 MaterialPageRoute(builder: (_) => const DashboardScreen()),
+                 MaterialPageRoute(
+                   builder: (_) => const SplashScreen(nextScreen: DashboardScreen()),
+                 ),
                );
              }
            }
