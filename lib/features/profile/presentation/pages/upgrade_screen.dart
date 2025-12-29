@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class UpgradeScreen extends StatelessWidget {
@@ -153,8 +154,16 @@ class UpgradeScreen extends StatelessWidget {
       } else {
          // Fallback/Error
          if (context.mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text('Could not launch email app. Please email wasikamboh0810@gmail.com')),
+           Clipboard.setData(const ClipboardData(text: 'wasikamboh0810@gmail.com'));
+           showDialog(
+             context: context,
+             builder: (ctx) => AlertDialog(
+               title: const Text('Email App Not Found'),
+               content: const Text('We could not open your email app. \n\nThe support email has been copied to your clipboard.'),
+               actions: [
+                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))
+               ],
+             ),
            );
          }
       }

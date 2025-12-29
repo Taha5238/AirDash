@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'help_support_screen.dart';
 import 'privacy_policy_screen.dart';
+import 'upgrade_screen.dart';
 import '../../../auth/data/services/auth_service.dart';
 import '../../../auth/presentation/pages/login_screen.dart';
 import '../../../auth/presentation/pages/verification_screen.dart';
@@ -137,6 +138,17 @@ class ProfileScreen extends StatelessWidget {
               icon: LucideIcons.user,
               title: "Personal Information",
               onTap: () => _showEditProfileDialog(context, userName, phoneNumber, authUser),
+            ),
+             _buildSettingsTile(
+              context,
+              icon: LucideIcons.crown,
+              title: "Upgrade to Pro",
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(8)),
+                child: Text('PRO', style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black)),
+              ),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UpgradeScreen())),
             ),
             _buildSettingsTile(
               context,

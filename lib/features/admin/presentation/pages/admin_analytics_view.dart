@@ -40,7 +40,7 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> with SingleTick
         
         final data = snapshot.data ?? {'users': 0, 'files': 0, 'storage': 0};
         final double totalStorageMB = (data['storage'] as int) / (1024 * 1024);
-        final double maxStorageMB = 500.0; // Assume 500MB limit for demo
+        final double maxStorageMB = 102400.0; // 100 GB Limit
         final double remainingMB = maxStorageMB - totalStorageMB;
 
         return SingleChildScrollView(
@@ -104,7 +104,7 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> with SingleTick
                                ),
                                const SizedBox(height: 4),
                                const Text(
-                                 "of 500 MB (Estimated Limit)",
+                                 "of 100 GB (Total Capacity)",
                                  style: TextStyle(color: Colors.white38, fontSize: 14),
                                ),
                              ],

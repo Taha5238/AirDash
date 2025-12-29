@@ -11,6 +11,7 @@ import '../../../files/data/models/file_item.dart';
 import '../../../notifications/presentation/pages/notification_screen.dart';
 import '../../../notifications/data/models/notification_model.dart';
 import '../../../notifications/data/services/notification_service.dart';
+import '../../../profile/presentation/pages/upgrade_screen.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -288,9 +289,7 @@ class _HomeViewState extends State<HomeView> {
                  const Spacer(),
                  TextButton(
                    onPressed: () {
-                       ScaffoldMessenger.of(context).showSnackBar(
-                           const SnackBar(content: Text("Upgrade feature coming soon!"))
-                       );
+                       Navigator.push(context, MaterialPageRoute(builder: (_) => const UpgradeScreen()));
                    }, 
                    child: const Text("Upgrade", style: TextStyle(fontWeight: FontWeight.bold)),
                  ),
