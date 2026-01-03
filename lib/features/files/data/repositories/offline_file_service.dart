@@ -225,6 +225,7 @@ class OfflineFileService {
   // Create Folder
   Future<FileItem?> createFolder(String name, {String? parentId}) async {
     final currentUserUid = AuthService().currentUserUid;
+    final String? userName = AuthService().currentUserName; // Get name
     if (currentUserUid == null) return null;
 
     final String id = DateTime.now().millisecondsSinceEpoch.toString();
@@ -254,6 +255,7 @@ class OfflineFileService {
         'size': 0,
         'type': FileType.folder.index,
         'userId': currentUserUid,
+        'userName': userName,
         'parentId': parentId,
         'createdAt': FieldValue.serverTimestamp(),
         'color': folderColor.value,

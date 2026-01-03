@@ -375,30 +375,66 @@ class _RecentActivityList extends StatelessWidget {
           ),
           child: Column(
             children: files.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return Column(
-                children: [
-                  ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(LucideIcons.file, color: Colors.blue, size: 20),
-                    ),
-                    title: Text(data['name'] ?? 'Unknown File', maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text('Uploaded by ${data['userName'] ?? 'User'}'),
-                    // Time placeholder (real implementation needs timestamp formatting)
-                    trailing: const Text('Just now', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  ),
-                  if (doc != files.last) const Divider(height: 1, indent: 60),
-                ],
-              );
+              return _RecentActivityItem(doc: doc, isLast: doc == files.last);
             }).toList(),
           ),
         );
       },
     );
+  }
+}
+
+class _RecentActivityItem extends StatelessWidget {
+  final QueryDocumentSnapshot doc;
+  final bool isLast;
+
+  const _RecentActivityItem({required this.doc, required this.isLast});
+
+  @override
+  Widget build(BuildContext context) {
+    final data = doc.data() as Map<String, dynamic>;
+    final String? storedName = data['userName'];
+    final String userId = data['userId'] ?? '';
+
+    return FutureBuilder<String>(
+      future: storedName != null 
+          ? Future.value(storedName) 
+          : _fetchUserName(userId),
+      builder: (context, snapshot) {
+        final userName = snapshot.data ?? 'User'; // Fallback while loading
+        
+        return Column(
+          children: [
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(LucideIcons.file, color: Colors.blue, size: 20),
+              ),
+              title: Text(data['name'] ?? 'Unknown File', maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('Uploaded by $userName'),
+              trailing: const Text('Just now', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ),
+            if (!isLast) const Divider(height: 1, indent: 60),
+          ],
+        );
+      }
+    );
+  }
+
+  Future<String> _fetchUserName(String userId) async {
+      if (userId.isEmpty) return 'Unknown User';
+      try {
+          final doc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+          if (doc.exists) {
+              return doc.data()?['name'] ?? 'Unknown User';
+          }
+      } catch (e) {
+          // ignore error
+      }
+      return 'Unknown User';
   }
 }
