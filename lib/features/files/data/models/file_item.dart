@@ -1,7 +1,10 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
-enum FileType { folder, image, video, document, audio, other }
+import 'file_type.dart';
+export 'file_type.dart';
+
+// enum FileType { folder, image, video, document, audio, other } // Moved to file_type.dart
 
 class FileItem {
   final String id;

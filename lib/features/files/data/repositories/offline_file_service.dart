@@ -8,16 +8,11 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart' as fp;
 import 'package:path/path.dart' as path;
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:file_picker/file_picker.dart' as fp;
-import 'package:path/path.dart' as path;
 import 'package:share_plus/share_plus.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../models/file_item.dart';
-
+import '../models/file_type.dart';
 import '../../../auth/data/services/auth_service.dart';
 import '../../../notifications/data/services/notification_service.dart';
 
@@ -456,11 +451,6 @@ class OfflineFileService {
         html.Url.revokeObjectUrl(url);
       }
     } else {
-      // On Mobile/Desktop, "Download" usually means exporting from app storage to public storage
-      // or opening share sheet. Since we are simulating offline storage, let's use Share
-      // as "Export" or just show a message.
-      // But user specifically asked for "Download".
-      // Let's implement copy to Downloads directory if possible or Share.
       await shareFile(item); // Fallback to share for consistency
     }
   }
@@ -534,10 +524,14 @@ class OfflineFileService {
       case '.aac':
         return FileType.audio;
       case '.pdf':
+        return FileType.pdf;
       case '.doc':
       case '.docx':
       case '.txt':
         return FileType.document;
+      case '.zip':
+      case '.rar':
+        return FileType.archive;
       default:
         return FileType.other;
     }
@@ -568,9 +562,6 @@ class OfflineFileService {
       final localFiles = getAllFiles(); // user filtered
       
       for (var item in localFiles) {
-        // If local item claims to be synced (meaning it WAS sent to cloud)
-        // BUT it is missing from cloudIds, it implies Admin deleted it.
-        // Or it wasn't synced yet (but .synced=true implies it was).
         if (item.synced && !cloudIds.contains(item.id)) {
              print("Sync: Deleting local file ${item.name} as it was removed from cloud.");
              await deleteFile(item.id); 
@@ -586,6 +577,72 @@ class OfflineFileService {
       print("Sync error: $e");
     }
   }
+
+  // Save Received File (P2P)
+  Future<FileItem?> saveReceivedFile(Uint8List bytes, String fileName, dynamic sizeArg, dynamic typeArg) async {
+       final currentUserUid = AuthService().currentUserUid;
+       final String? userName = AuthService().currentUserName;
+       if (currentUserUid == null) return null;
+
+       try {
+         String? newPath;
+         int size = bytes.length; 
+         
+         if (!kIsWeb) {
+            final Directory appDir = await getApplicationDocumentsDirectory();
+            newPath = path.join(appDir.path, fileName);
+            
+            final File file = File(newPath);
+            if (await file.exists()) {
+                 final nameWithoutExt = path.basenameWithoutExtension(fileName);
+                 final ext = path.extension(fileName);
+                 newPath = path.join(appDir.path, "${nameWithoutExt}_${DateTime.now().millisecondsSinceEpoch}$ext");
+            }
+            await File(newPath).writeAsBytes(bytes);
+         }
+
+         final String id = DateTime.now().millisecondsSinceEpoch.toString();
+         // We should try to use the typeArg if strictly matching, but helper is safer
+         final FileType type = _getTypeFromName(fileName);
+
+         final FileItem newItem = FileItem(
+           id: id,
+           name: fileName,
+           size: _formatSize(size),
+           modified: DateTime.now(),
+           type: type,
+           localPath: newPath,
+           synced: true,
+           content: kIsWeb ? bytes : null,
+           userId: currentUserUid,
+         );
+
+         await _box.put(id, newItem.toMap());
+
+         final batch = FirebaseFirestore.instance.batch();
+         final fileRef = FirebaseFirestore.instance.collection('files').doc(id);
+         final userRef = FirebaseFirestore.instance.collection('users').doc(currentUserUid);
+
+         batch.set(fileRef, {
+            'id': id,
+            'name': fileName,
+            'size': size,
+            'type': newItem.type.index,
+            'userId': currentUserUid,
+            'userName': userName,
+            'createdAt': FieldValue.serverTimestamp(),
+         });
+
+         batch.update(userRef, {
+            'storageUsed': FieldValue.increment(size),
+            'fileCount': FieldValue.increment(1),
+         });
+
+         await batch.commit();
+         return newItem;
+      } catch (e) {
+         print("Error saving received file: $e");
+         return null;
+      }
+  }
 }
-
-

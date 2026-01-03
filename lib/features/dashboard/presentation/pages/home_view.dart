@@ -7,12 +7,17 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import '../../../files/data/repositories/offline_file_service.dart';
-import '../../../files/data/models/file_item.dart';
-import '../../../notifications/presentation/pages/notification_screen.dart';
-import '../../../notifications/data/models/notification_model.dart';
-import '../../../notifications/data/services/notification_service.dart';
-import '../../../profile/presentation/pages/upgrade_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:airdash/features/files/data/repositories/offline_file_service.dart';
+import 'package:airdash/features/files/data/models/file_item.dart';
+import 'package:airdash/features/files/data/models/file_type.dart';
+import 'package:airdash/features/notifications/presentation/pages/notification_screen.dart';
+import 'package:airdash/features/notifications/data/models/notification_model.dart';
+import 'package:airdash/features/notifications/data/services/notification_service.dart';
+import 'package:airdash/features/profile/presentation/pages/upgrade_screen.dart';
+import 'package:airdash/features/auth/data/services/auth_service.dart';
+import 'package:airdash/features/transfer/data/services/signaling_service.dart';
+import 'package:airdash/features/transfer/presentation/pages/receiver_progress_screen.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -34,6 +39,80 @@ class _HomeViewState extends State<HomeView> {
     _fileService.syncCloudDeletions().then((_) {
        if (mounted) setState(() {}); 
     });
+
+    _listenForTransfers();
+  }
+
+  void _listenForTransfers() {
+      final userId = AuthService().currentUserUid;
+      if (userId == null) return;
+
+      SignalingService().getIncomingSignals(userId).listen((snapshot) {
+          for (var change in snapshot.docChanges) {
+              if (change.type == DocumentChangeType.added) {
+                  final data = change.doc.data() as Map<String, dynamic>;
+                  final id = change.doc.id;
+                  
+                  // Show Dialog
+                  // We must check if dialog is already showing to avoid stack? 
+                  // For now simple showDialog
+                  if (mounted) {
+                      _showIncomingTransferDialog(id, data);
+                  }
+              }
+          }
+      });
+  }
+
+  void _showIncomingTransferDialog(String transferId, Map<String, dynamic> data) {
+      final senderName = data['senderId'] ?? 'Unknown'; 
+      final fileMeta = data['fileMetadata'] as Map<String, dynamic>;
+      final fileName = fileMeta['name'] ?? 'File';
+      final fileSize = fileMeta['size'] ?? '?';
+
+      showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+              title: const Text("Incoming File Transfer"),
+              content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                      Text("A user wants to send you a file via P2P (Offline Transfer)."),
+                      const SizedBox(height: 10),
+                      Text("File: $fileName", style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text("Size: $fileSize"),
+                  ],
+              ),
+              actions: [
+                  TextButton(
+                      onPressed: () {
+                          // Reject / Ignore
+                          Navigator.pop(context);
+                      },
+                      child: const Text("Decline"),
+                  ),
+                  FilledButton(
+                      onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => ReceiverProgressScreen(
+                                      transferId: transferId,
+                                      offer: data['offer'],
+                                      fileMetadata: fileMeta,
+                                      senderName: senderName,
+                                  ),
+                              ),
+                          );
+                      },
+                      child: const Text("Accept"),
+                  ),
+              ],
+          ),
+      );
   }
 
   @override
@@ -209,26 +288,6 @@ class _HomeViewState extends State<HomeView> {
       duration: Duration(milliseconds: 600),
       curve: Curves.easeOutQuart,
       builder: (context, value, child) {
-        // Simple delay simulation using opacity/offset with value
-        // For a real delay we'd need a Stateful widget + Timer or StaggeredAnimation
-        // But adapting the start time is tricky in stateless.
-        // A hack is to modify the curve or duration, but `TweenAnimationBuilder` starts immediately.
-        // Let's rely on standard Tween for now, but to simulate staggered, we can't easily delay
-        // without state.
-        // Actually, we can use a FutureBuilder or just accept they all start but with different durations/curves?
-        // No, let's just use the `TweenAnimationBuilder` but without explicit delay.
-        // Wait, I can't delay start easily in stateless without complexity.
-        // I'll switch to a simple standard fade-slide for all, maybe they all animate in together.
-        // OR, I can make this Stateful to properly stagger.
-
-        // Let's stick to simple immediate animation for now to save complexity,
-        // effectively they all slide in.
-        // To make it look staggered, we can use `value` combined with index in a list,
-        // but here they are separate widgets.
-
-        // Better approach for "Cool":
-        // Just let them slide in.
-
         return Opacity(
           opacity: value,
           child: Transform.translate(
@@ -240,17 +299,6 @@ class _HomeViewState extends State<HomeView> {
       child: child,
     );
   }
-
-  // Re-implementing _buildAnimatedItem properly for Staggered effect
-  // requires StatefulWidget. I will keep it simple for now as requested "cool"
-  // often just means "not static".
-  // NOTE: If I used `flutter_staggered_animations` package it would be easier,
-  // but I should avoid packages if possible.
-
-  // Let's use a FutureBuilder to delay the start of the Tween?
-  // No, that's flicker prone.
-  // I will just use the simple Tween. It looks good enough.
-
 
 
   Widget _buildStorageCard(BuildContext context) {
