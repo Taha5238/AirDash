@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/utils/responsive_layout.dart';
 import '../../data/models/file_item.dart';
 import '../../data/repositories/offline_file_service.dart';
+import '../widgets/folder_picker_dialog.dart';
 
 import 'file_detail_view.dart';
 import 'file_search_delegate.dart';
@@ -21,16 +22,17 @@ class _FileExplorerViewState extends State<FileExplorerView> {
   FileItem? _selectedFile;
   String _searchQuery = '';
   FileType? _filterType;
+  
+  String? _currentFolderId; // Current folder ID (null = root)
 
 
   Future<void> _pickAndSaveFile() async {
     try {
-      final newItem = await _fileService.pickAndSaveFile();
+      final newItem = await _fileService.pickAndSaveFile(parentId: _currentFolderId);
       if (newItem != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('File saved offline!')),
         );
-        // _loadFiles(); // Handled by listener
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -39,7 +41,118 @@ class _FileExplorerViewState extends State<FileExplorerView> {
     }
   }
 
+  Future<void> _createFolder() async {
+      String? folderName;
+      await showDialog(
+         context: context,
+         builder: (context) {
+             final controller = TextEditingController();
+             return AlertDialog(
+                 title: const Text("New Folder"),
+                 content: TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(hintText: "Folder Name"),
+                    autofocus: true,
+                    onSubmitted: (val) => Navigator.pop(context),
+                 ),
+                 actions: [
+                     TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                     FilledButton(
+                         onPressed: () {
+                             folderName = controller.text.trim();
+                             Navigator.pop(context);
+                         }, 
+                         child: const Text("Create")
+                     ),
+                 ],
+             );
+         }
+      );
+
+      if (folderName != null && folderName!.isNotEmpty) {
+          try {
+             await _fileService.createFolder(folderName!, parentId: _currentFolderId);
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Folder created")));
+          } catch(e) {
+             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+          }
+      }
+  }
+
+  Future<void> _renameFolder(FileItem folder) async {
+       String? newName;
+      await showDialog(
+         context: context,
+         builder: (context) {
+             final controller = TextEditingController(text: folder.name);
+             return AlertDialog(
+                 title: const Text("Rename Folder"),
+                 content: TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(hintText: "New Name"),
+                    autofocus: true,
+                    onSubmitted: (val) => Navigator.pop(context),
+                 ),
+                 actions: [
+                     TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                     FilledButton(
+                         onPressed: () {
+                             newName = controller.text.trim();
+                             Navigator.pop(context);
+                         }, 
+                         child: const Text("Rename")
+                     ),
+                 ],
+             );
+         }
+      );
+
+      if (newName != null && newName!.isNotEmpty && newName != folder.name) {
+          await _fileService.renameFolder(folder.id, newName!);
+      }
+  }
+
+  Future<void> _moveFile(FileItem item) async {
+      final String? destReturn = await showDialog<String?>(
+          context: context,
+          builder: (context) => FolderPickerDialog(
+             currentFolderId: _currentFolderId,
+             fileToMoveId: item.id,
+          ),
+      );
+      
+      if (destReturn != null) {
+          final String? finalDestId = destReturn == "root" ? null : destReturn;
+          if (finalDestId != item.parentId) {
+             await _fileService.moveFile(item.id, finalDestId);
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Moved.")));
+          }
+      }
+      
+  }
+
   Future<void> _deleteFile(FileItem file) async {
+    // Confirmation
+    final bool confirm = await showDialog(
+      context: context, 
+      builder: (context) => AlertDialog(
+        title: Text(file.isFolder ? 'Delete Folder?' : 'Delete File?'),
+        content: Text(file.isFolder 
+          ? 'This will delete the folder and ALL its contents. This cannot be undone.' 
+          : 'Are you sure you want to delete this file?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text("Delete")
+          ),
+        ],
+      )
+    ) ?? false;
+
+    if (!confirm) return;
+
     await _fileService.deleteFile(file.id);
     
     if (_selectedFile?.id == file.id) {
@@ -49,13 +162,16 @@ class _FileExplorerViewState extends State<FileExplorerView> {
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('File deleted.')),
+      const SnackBar(content: Text('Item deleted.')),
     );
-
   }
 
   Future<void> _shareFile(FileItem file) async {
     try {
+      if (file.isFolder) {
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cannot share folders yet.")));
+         return;
+      }
       await _fileService.shareFile(file);
     } catch (e) {
       if (mounted) {
@@ -81,6 +197,15 @@ class _FileExplorerViewState extends State<FileExplorerView> {
 
 
   void _onFileTap(FileItem file) {
+    if (file.isFolder) {
+        // Enter folder
+        setState(() {
+            _currentFolderId = file.id;
+            _selectedFile = null; // Deselect when entering folder
+        });
+        return;
+    }
+
     if (ResponsiveLayout.isDesktop(context)) {
       setState(() {
         _selectedFile = file;
@@ -98,13 +223,35 @@ class _FileExplorerViewState extends State<FileExplorerView> {
     }
   }
 
+  void _navigateUp() {
+      if (_currentFolderId == null) return;
+      
+      // We need to find the parent of the current folder to know where to go back to.
+      // Or we can just go to root if we don't track stack? 
+      // Better to query the current folder's item to find its parentId.
+      final item = Hive.box('filesBox').get(_currentFolderId);
+      if (item != null) {
+          final map = Map<String, dynamic>.from(item);
+          final folder = FileItem.fromMap(map);
+          setState(() {
+              _currentFolderId = folder.parentId;
+          });
+      } else {
+          // Folder doesn't exist? Go literal root.
+          setState(() {
+              _currentFolderId = null;
+          });
+      }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
       valueListenable: Hive.box('filesBox').listenable(),
       builder: (context, box, _) {
         // Re-fetch files whenever box changes
-        final allFiles = _fileService.getAllFiles();
+        final allFiles = _fileService.getAllFiles(parentId: _currentFolderId);
+
         
         // Apply Filters
         final filteredFiles = allFiles.where((file) {
@@ -151,10 +298,15 @@ class _FileExplorerViewState extends State<FileExplorerView> {
                   onFileTap: _onFileTap,
                   selectedFile: _selectedFile,
                   onUpload: _pickAndSaveFile,
+                  onCreateFolder: _createFolder,
                   onDelete: _deleteFile,
                   onShare: _shareFile,
+                  onRename: _renameFolder,
+                  onMove: _moveFile,
                   onSearch: _onSearch,
                   onFilter: _onFilter,
+                  currentFolderId: _currentFolderId,
+                  onNavigateUp: _navigateUp,
                 ),
               ),
               const VerticalDivider(width: 1),
@@ -177,10 +329,15 @@ class _FileExplorerViewState extends State<FileExplorerView> {
             onFileTap: _onFileTap,
             selectedFile: null, 
             onUpload: _pickAndSaveFile,
+            onCreateFolder: _createFolder,
             onDelete: _deleteFile,
             onShare: _shareFile,
+            onRename: _renameFolder,
+            onMove: _moveFile,
             onSearch: _onSearch,
             onFilter: _onFilter,
+            currentFolderId: _currentFolderId,
+            onNavigateUp: _navigateUp,
           );
         }
       },
@@ -193,27 +350,42 @@ class _FileListView extends StatelessWidget {
   final Function(FileItem) onFileTap;
   final FileItem? selectedFile;
   final VoidCallback onUpload;
+  final VoidCallback onCreateFolder;
   final Function(FileItem) onDelete;
   final Function(FileItem) onShare;
+  final Function(FileItem) onRename;
+  final Function(FileItem) onMove;
   final Function(String) onSearch;
   final Function(FileType?) onFilter;
+  final String? currentFolderId;
+  final VoidCallback onNavigateUp;
 
   const _FileListView({
     required this.files,
     required this.onFileTap,
     this.selectedFile,
     required this.onUpload,
+    required this.onCreateFolder,
     required this.onDelete,
     required this.onShare,
+    required this.onRename,
+    required this.onMove,
     required this.onSearch,
     required this.onFilter,
+    this.currentFolderId,
+    required this.onNavigateUp,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Files'),
+        title: currentFolderId == null ? const Text('My Files') : Row(
+            children: [
+                IconButton(icon: const Icon(LucideIcons.arrowLeft), onPressed: onNavigateUp),
+                const Text('...'), // simplified breadcrumb
+            ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(LucideIcons.search), 
@@ -239,10 +411,22 @@ class _FileListView extends StatelessWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: onUpload,
-        icon: const Icon(LucideIcons.uploadCloud),
-        label: const Text('Upload'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+            FloatingActionButton.small(
+                heroTag: "create_folder",
+                onPressed: onCreateFolder,
+                child: const Icon(LucideIcons.folderPlus),
+            ),
+            const SizedBox(height: 16),
+            FloatingActionButton.extended(
+                heroTag: "upload_file",
+                onPressed: onUpload,
+                icon: const Icon(LucideIcons.uploadCloud),
+                label: const Text('Upload'),
+            ),
+        ],
       ),
       body: files.isEmpty 
           ? const Center(child: Text("No files yet. Upload one!"))
@@ -296,6 +480,7 @@ class _FileListView extends StatelessWidget {
                     fontWeight: isSelected
                         ? FontWeight.bold
                         : FontWeight.normal,
+                    color: file.isFolder ? Theme.of(context).primaryColor : null,
                   ),
                 ),
                 subtitle: Column(
@@ -324,6 +509,10 @@ class _FileListView extends StatelessWidget {
                       onSelected: (value) {
                         if (value == 'delete') {
                           onDelete(file);
+                        } else if (value == 'rename') {
+                           onRename(file);
+                        } else if (value == 'move') {
+                            onMove(file);
                         }
                       },
                       itemBuilder: (BuildContext context) {
@@ -332,7 +521,11 @@ class _FileListView extends StatelessWidget {
                             value: choice.toLowerCase(),
                             child: Text(choice),
                           );
-                        }).toList();
+                        }).toList()
+                        ..addAll([
+                            const PopupMenuItem(value: 'move', child: Text("Move to...")),
+                            if (file.isFolder) const PopupMenuItem(value: 'rename', child: Text("Rename")),
+                        ]);
                       },
                     ),
                   ],

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hive_flutter/hive_flutter.dart';
@@ -23,8 +24,8 @@ import '../../../notifications/data/services/notification_service.dart';
 class OfflineFileService {
   Box get _box => Hive.box('filesBox');
 
-  // Get all files from Hive (Filtered by User)
-  List<FileItem> getAllFiles() {
+  // Get all files from Hive (Filtered by User and Parent Folder)
+  List<FileItem> getAllFiles({String? parentId}) {
     final currentUserUid = AuthService().currentUserUid;
     if (currentUserUid == null) return []; // No files if not logged in
 
@@ -36,9 +37,16 @@ class OfflineFileService {
            final map = Map<String, dynamic>.from(data);
            final item = FileItem.fromMap(map);
            
-           // Filter: Only show files for this user
+
+           // Filter: Only show files for this user and optionally by folder
            if (item.userId == currentUserUid) {
-              files.add(item);
+              if (parentId == null) {
+                  // Root: items with no parentId
+                  if (item.parentId == null) files.add(item);
+              } else {
+                  // Subfolder: items with matching parentId
+                  if (item.parentId == parentId) files.add(item);
+              }
            }
         } catch (e) {
           print("Error parsing file item: $e");
@@ -55,7 +63,7 @@ class OfflineFileService {
   }
 
   // Pick and save a file
-  Future<FileItem?> pickAndSaveFile({Function(String name, int size)? onFilePicked}) async {
+  Future<FileItem?> pickAndSaveFile({Function(String name, int size)? onFilePicked, String? parentId}) async {
     final currentUserUid = AuthService().currentUserUid;
     final String? userName = AuthService().currentUserName; // Get name for metadata
     if (currentUserUid == null) {
@@ -113,6 +121,7 @@ class OfflineFileService {
           synced: true, // Mark as synced since we send to Firestore
           content: content,
           userId: currentUserUid, 
+          parentId: parentId,
         );
 
         // 1. Save Local (Hive)
@@ -130,6 +139,7 @@ class OfflineFileService {
           'type': newItem.type.index,
           'userId': currentUserUid,
           'userName': userName,
+          'parentId': parentId,
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -212,6 +222,116 @@ class OfflineFileService {
       }
   }
 
+  // Create Folder
+  Future<FileItem?> createFolder(String name, {String? parentId}) async {
+    final currentUserUid = AuthService().currentUserUid;
+    if (currentUserUid == null) return null;
+
+    final String id = DateTime.now().millisecondsSinceEpoch.toString();
+    // Default folder color
+    final Color folderColor = Colors.blue; 
+
+    final FileItem newFolder = FileItem(
+      id: id,
+      name: name,
+      size: '', // Folders don't have size in this simple version
+      modified: DateTime.now(),
+      type: FileType.folder, 
+      localPath: null, // Virtual folder
+      synced: true,
+      userId: currentUserUid,
+      parentId: parentId,
+      color: folderColor,
+    );
+
+    await _box.put(id, newFolder.toMap());
+
+    // Sync to Firestore
+    try {
+      await FirebaseFirestore.instance.collection('files').doc(id).set({
+        'id': id,
+        'name': name,
+        'size': 0,
+        'type': FileType.folder.index,
+        'userId': currentUserUid,
+        'parentId': parentId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'color': folderColor.value,
+      });
+    } catch (e) {
+      print("Error syncing folder creation: $e");
+    }
+    
+    return newFolder;
+  }
+
+  // Rename Folder
+  Future<void> renameFolder(String id, String newName) async {
+    final data = _box.get(id);
+    if (data != null) {
+      final map = Map<String, dynamic>.from(data);
+      final item = FileItem.fromMap(map);
+      
+      if (item.userId != AuthService().currentUserUid) return;
+
+      final updatedItem = item.copyWith(name: newName);
+      await _box.put(id, updatedItem.toMap());
+
+      // Sync
+      try {
+        await FirebaseFirestore.instance.collection('files').doc(id).update({
+            'name': newName
+        });
+      } catch (e) {
+         print("Error renaming folder cloud: $e");
+      }
+    }
+  }
+
+  // Move File or Folder
+  Future<void> moveFile(String id, String? newParentId) async {
+    final data = _box.get(id);
+    if (data != null) {
+      final map = Map<String, dynamic>.from(data);
+      final item = FileItem.fromMap(map);
+
+      if (item.userId != AuthService().currentUserUid) return;
+      
+      // Prevent circular move (folder into itself)
+      if (item.isFolder && id == newParentId) return;
+
+      final updatedItem = item.copyWith(parentId: newParentId);
+      await _box.put(id, updatedItem.toMap());
+
+      // Sync
+      try {
+         await FirebaseFirestore.instance.collection('files').doc(id).update({
+             'parentId': newParentId
+         });
+      } catch (e) {
+         print("Error moving file cloud: $e");
+      }
+    }
+  }
+
+  // Helper to find all descendants of a folder (for recursive delete)
+  List<String> _getAllDescendantIds(String folderId) {
+     final List<String> descendants = [];
+     final allFiles = _box.values.map((e) => FileItem.fromMap(Map<String, dynamic>.from(e))).toList();
+     
+     // Find direct children
+     final children = allFiles.where((f) => f.parentId == folderId).toList();
+     
+     for (var child in children) {
+        descendants.add(child.id);
+        if (child.isFolder) {
+           descendants.addAll(_getAllDescendantIds(child.id));
+        }
+     }
+     return descendants;
+  }
+
+
   // Delete file
   Future<void> deleteFile(String id) async {
     final data = _box.get(id);
@@ -222,6 +342,14 @@ class OfflineFileService {
       // Security check: Only delete if owned by current user
       if (item.userId != AuthService().currentUserUid) return;
 
+      // If folder, delete contents recursively
+      if (item.isFolder) {
+          final descendants = _getAllDescendantIds(item.id);
+          for (var childId in descendants) {
+             await deleteFile(childId);
+          }
+      }
+
       if (!kIsWeb && item.localPath != null) {
         final File file = File(item.localPath!);
         if (await file.exists()) {
@@ -231,17 +359,19 @@ class OfflineFileService {
       await _box.delete(id);
       
       // Sync Delete in Firestore
-      // Sync Delete in Firestore & Decrement User Stats
       try {
         final batch = FirebaseFirestore.instance.batch();
         final fileRef = FirebaseFirestore.instance.collection('files').doc(id);
         final userRef = FirebaseFirestore.instance.collection('users').doc(item.userId);
 
         batch.delete(fileRef);
-        batch.update(userRef, {
-           'storageUsed': FieldValue.increment(-_parseSize(item.size)),
-           'fileCount': FieldValue.increment(-1),
-        });
+        // Only decrement stats if it's a file (folders have no size/count impact in this simple model, or count as 0 size)
+        if (!item.isFolder) {
+           batch.update(userRef, {
+              'storageUsed': FieldValue.increment(-_parseSize(item.size)),
+              'fileCount': FieldValue.increment(-1),
+           });
+        }
 
         await batch.commit();
       } catch(e) {
