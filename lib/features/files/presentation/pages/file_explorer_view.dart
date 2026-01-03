@@ -8,6 +8,10 @@ import '../widgets/folder_picker_dialog.dart';
 
 import 'file_detail_view.dart';
 import 'file_search_delegate.dart';
+import 'viewers/image_viewer_page.dart';
+import 'viewers/pdf_viewer_page.dart';
+import 'viewers/video_player_page.dart';
+import 'viewers/office_viewer_page.dart';
 
 class FileExplorerView extends StatefulWidget {
   const FileExplorerView({super.key});
@@ -211,15 +215,42 @@ class _FileExplorerViewState extends State<FileExplorerView> {
         _selectedFile = file;
       });
     } else {
-      // Mobile Navigation
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => Scaffold(
-            appBar: AppBar(title: Text(file.name)),
-            body: FileDetailView(file: file),
-          ),
-        ),
-      );
+      // Mobile Navigation logic with strict in-app viewers
+      Widget? viewerPage;
+      
+      switch (file.type) {
+          case FileType.image:
+              viewerPage = ImageViewerPage(file: file);
+              break;
+          case FileType.document:
+              if (file.name.toLowerCase().endsWith('.pdf')) {
+                  viewerPage = PdfViewerPage(file: file);
+              } else if (file.name.toLowerCase().endsWith('.docx') || file.name.toLowerCase().endsWith('.xlsx')) {
+                  viewerPage = OfficeViewerPage(file: file); // iOS only, Android shows message
+              }
+              break;
+          case FileType.video:
+              viewerPage = VideoPlayerPage(file: file);
+              break;
+          default:
+              break;
+      }
+
+      if (viewerPage != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => viewerPage!),
+          );
+      } else {
+          // Fallback to Detail View if no viewer or "Other" type
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => Scaffold(
+                appBar: AppBar(title: Text(file.name)),
+                body: FileDetailView(file: file),
+              ),
+            ),
+          );
+      }
     }
   }
 
