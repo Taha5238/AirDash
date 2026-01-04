@@ -82,6 +82,13 @@ class AuthService {
       
       // 2. Check Firestore for Role and Status
       if (cred.user != null) {
+        // Force refresh of Access Token and User Metadata (like emailVerified)
+        await cred.user!.reload();
+        // Sync Verification Status
+        if (cred.user!.emailVerified) {
+           await _firestore.collection('users').doc(cred.user!.uid).update({'isVerified': true});
+        }
+        
         DocumentSnapshot userDoc = await _firestore.collection('users').doc(cred.user!.uid).get();
         
         if (userDoc.exists) {
@@ -100,6 +107,7 @@ class AuthService {
               'email': email,
               'role': 'user', 
               'accountStatus': 'active',
+              'isVerified': cred.user!.emailVerified,
               'createdAt': FieldValue.serverTimestamp(),
            });
         }

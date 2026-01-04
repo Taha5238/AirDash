@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
+import '../../../files/data/models/file_type.dart';
 
 class AdminFileView extends StatefulWidget {
   final String? userId;
@@ -90,11 +91,14 @@ class _AdminFileViewState extends State<AdminFileView> {
         visibleFiles.sort((a, b) {
            final aData = a.data() as Map<String, dynamic>;
            final bData = b.data() as Map<String, dynamic>;
-           final aType = aData['type'] ?? 5; // 0=folder
-           final bType = bData['type'] ?? 5;
+           final aType = aData['type'] ?? FileType.other.index;
+           final bType = bData['type'] ?? FileType.other.index;
            
-           if (aType == 0 && bType != 0) return -1;
-           if (aType != 0 && bType == 0) return 1;
+           final aIsFolder = aType == FileType.folder.index;
+           final bIsFolder = bType == FileType.folder.index;
+
+           if (aIsFolder && !bIsFolder) return -1;
+           if (!aIsFolder && bIsFolder) return 1;
            return 0;
         });
 
@@ -119,8 +123,8 @@ class _AdminFileViewState extends State<AdminFileView> {
             final name = data['name'] ?? 'Unknown File';
             final size = data['size'] ?? 0;
             final uploadedBy = data['userName'] ?? 'Unknown User'; 
-            final typeIndex = data['type'] ?? 5;
-            final isFolder = typeIndex == 0;
+            final typeIndex = data['type'] ?? FileType.other.index;
+            final isFolder = typeIndex == FileType.folder.index;
             final isApk = name.toLowerCase().endsWith('.apk');
             
             return ListTile(
@@ -130,7 +134,7 @@ class _AdminFileViewState extends State<AdminFileView> {
                 color: isFolder ? Colors.amber : (isApk ? Colors.blue : null)
               ),
               title: Text(name),
-              subtitle: Text(isFolder ? 'Folder' : 'Size: ${_formatSize(size)} • By: $uploadedBy'),
+              subtitle: Text(isFolder ? 'Folder • By: $uploadedBy' : 'Size: ${_formatSize(size)} • By: $uploadedBy'),
               trailing: IconButton(
                 icon: const Icon(LucideIcons.trash2, color: Colors.red),
                 onPressed: () async {

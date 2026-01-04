@@ -167,6 +167,11 @@ class _UserManagementViewState extends State<UserManagementView> {
                            if (confirm == true) {
                              await userDoc.reference.delete();
                            }
+
+                        } else if (value == 'toggle_verify') {
+                           await userDoc.reference.update({
+                               'isVerified': !isVerified
+                           });
                         }
                       },
                       itemBuilder: (context) => [
@@ -177,6 +182,16 @@ class _UserManagementViewState extends State<UserManagementView> {
                               Icon(isBlocked ? LucideIcons.checkCircle : LucideIcons.ban, size: 18, color: isBlocked ? Colors.green : Colors.red),
                               const SizedBox(width: 8),
                               Text(isBlocked ? 'Unblock User' : 'Block User'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'toggle_verify',
+                          child: Row(
+                            children: [
+                              Icon(isVerified ? LucideIcons.badgeX : LucideIcons.badgeCheck, size: 18, color: Colors.blue),
+                              const SizedBox(width: 8),
+                              Text(isVerified ? 'Remove Verify' : 'Verify User'),
                             ],
                           ),
                         ),

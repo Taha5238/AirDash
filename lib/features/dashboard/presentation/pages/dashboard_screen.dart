@@ -15,10 +15,14 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _pages = [
-    const HomeView(),
-    const FileExplorerView(),
-    const ProfileScreen(),
+  List<Widget> get _pages => [
+      HomeView(onNavigateToFiles: () {
+          setState(() {
+            _selectedIndex = 1;
+          });
+      }),
+      const FileExplorerView(),
+      const ProfileScreen(),
   ];
 
   @override

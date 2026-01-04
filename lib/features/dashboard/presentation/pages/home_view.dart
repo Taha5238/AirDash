@@ -18,9 +18,13 @@ import 'package:airdash/features/profile/presentation/pages/upgrade_screen.dart'
 import 'package:airdash/features/auth/data/services/auth_service.dart';
 import 'package:airdash/features/transfer/data/services/signaling_service.dart';
 import 'package:airdash/features/transfer/presentation/pages/receiver_progress_screen.dart';
+import 'package:airdash/features/transfer/presentation/widgets/transfer_user_picker_dialog.dart';
+import 'package:airdash/features/transfer/presentation/pages/transfer_progress_screen.dart';
 
 class HomeView extends StatefulWidget {
-  const HomeView({super.key});
+  final VoidCallback? onNavigateToFiles;
+
+  const HomeView({super.key, this.onNavigateToFiles});
 
   @override
   State<HomeView> createState() => _HomeViewState();
@@ -258,7 +262,7 @@ class _HomeViewState extends State<HomeView> {
                         ),
                       ),
                       TextButton(
-                        onPressed: () {}, // Navigate to Files tab?
+                        onPressed: widget.onNavigateToFiles, 
                         child: const Text("View All"),
                       ),
                     ],
@@ -359,6 +363,7 @@ class _HomeViewState extends State<HomeView> {
                    color: Colors.white,
                    fontSize: 20,
                    fontWeight: FontWeight.bold,
+                   decoration: TextDecoration.none, // Ensure no underline
                  ),
                ),
                const Spacer(),
@@ -445,11 +450,62 @@ class _HomeViewState extends State<HomeView> {
   }
 
   Future<void> _handleTransfer() async {
-      // Pick a file to share immediately
+      // 1. Pick File First (Common step)
       final file = await _fileService.pickAndSaveFile();
-       if (file != null && mounted) {
-           await _shareFile(file);
-       }
+      if (file == null || !mounted) return;
+
+      // 2. Ask User for Method
+      showModalBottomSheet(
+          context: context,
+          shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (context) {
+              return SafeArea(
+                  child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                              Text("Choose Transfer Method", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 10),
+                              ListTile(
+                                  leading: const Icon(LucideIcons.radio, color: Colors.blue),
+                                  title: const Text("AirDash P2P"),
+                                  subtitle: const Text("Send directly to another dashboard user nearby"),
+                                  onTap: () async {
+                                      Navigator.pop(context); // Close sheet
+                                      
+                                      // P2P Flow
+                                      final String? userId = await showDialog<String>(
+                                          context: context,
+                                          builder: (context) => const TransferUserPickerDialog(),
+                                      );
+
+                                      if (userId != null && mounted) {
+                                          Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                  builder: (context) => TransferProgressScreen(file: file, receiverId: userId),
+                                              ),
+                                          );
+                                      }
+                                  },
+                              ),
+                              ListTile(
+                                  leading: const Icon(LucideIcons.share2, color: Colors.green),
+                                  title: const Text("System Share"),
+                                  subtitle: const Text("Share via WhatsApp, Email, Bluetooth..."),
+                                  onTap: () {
+                                      Navigator.pop(context);
+                                      _shareFile(file);
+                                  },
+                              ),
+                          ],
+                      ),
+                  ),
+              );
+          },
+      );
   }
 
   Future<void> _handlePdfScan() async {
