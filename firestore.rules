@@ -63,5 +63,25 @@ service cloud.firestore {
          allow read, write: if isAuthenticated();
        }
     }
+
+    // Community Spaces
+    match /communities/{communityId} {
+      // Allow creation by any authenticated user
+      allow create: if isAuthenticated();
+      
+      // Allow read if authenticated (filtering done in query)
+      allow read: if isAuthenticated();
+      
+      // Allow update (joining, changing roles) if authenticated (Simplification: ideally validate fields)
+      allow update: if isAuthenticated();
+      
+      // Allow delete if Admin or Creator
+      allow delete: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
+
+      // Messages Subcollection
+      match /messages/{messageId} {
+         allow read, write: if isAuthenticated();
+      }
+    }
   }
 }

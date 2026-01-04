@@ -20,6 +20,7 @@ class FileItem {
   final Uint8List? content; // For Web support
   final String? userId; // Owner of the file
   final String? parentId; // ID of the parent folder (null for root)
+  final String? communityId; // ID of the community if this is a community file
 
   const FileItem({
     required this.id,
@@ -35,6 +36,7 @@ class FileItem {
     this.content,
     this.userId,
     this.parentId,
+    this.communityId,
   });
 
   bool get isFolder => type == FileType.folder;
@@ -53,6 +55,7 @@ class FileItem {
     Uint8List? content,
     String? userId,
     String? parentId,
+    String? communityId,
   }) {
     return FileItem(
       id: id ?? this.id,
@@ -68,6 +71,7 @@ class FileItem {
       content: content ?? this.content,
       userId: userId ?? this.userId,
       parentId: parentId ?? this.parentId,
+      communityId: communityId ?? this.communityId,
     );
   }
 
@@ -85,6 +89,7 @@ class FileItem {
       'content': content,
       'userId': userId,
       'parentId': parentId,
+      'communityId': communityId,
     };
   }
 
@@ -102,6 +107,7 @@ class FileItem {
       content: map['content'],
       userId: map['userId'],
       parentId: map['parentId'],
+      communityId: map['communityId'],
     );
   }
 }

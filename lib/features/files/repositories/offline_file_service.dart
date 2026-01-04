@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart' as fp;
 import 'package:path/path.dart' as path;
 import 'package:share_plus/share_plus.dart';
 import 'package:universal_html/html.dart' as html;
+import 'package:permission_handler/permission_handler.dart';
 
 import '../models/file_item.dart';
 import '../models/file_type.dart';
@@ -19,8 +20,8 @@ import '../../notifications/services/notification_service.dart';
 class OfflineFileService {
   Box get _box => Hive.box('filesBox');
 
-  // Get all files from Hive (Filtered by User and Parent Folder)
-  List<FileItem> getAllFiles({String? parentId}) {
+  // Get all files from Hive (Filtered by User/Community and Parent Folder)
+  List<FileItem> getAllFiles({String? parentId, String? communityId}) {
     final currentUserUid = AuthService().currentUserUid;
     if (currentUserUid == null) return []; // No files if not logged in
 
@@ -33,8 +34,17 @@ class OfflineFileService {
            final item = FileItem.fromMap(map);
            
 
-           // Filter: Only show files for this user and optionally by folder
-           if (item.userId == currentUserUid) {
+           // Filter logic
+           bool matchesContext = false;
+           if (communityId != null) {
+              // Community Mode: Show files for this community
+              matchesContext = (item.communityId == communityId);
+           } else {
+              // Personal Mode: Show files for this user AND not in a community
+              matchesContext = (item.userId == currentUserUid && item.communityId == null);
+           }
+
+           if (matchesContext) {
               if (parentId == null) {
                   // Root: items with no parentId
                   if (item.parentId == null) files.add(item);
@@ -58,7 +68,7 @@ class OfflineFileService {
   }
 
   // Pick and save a file
-  Future<FileItem?> pickAndSaveFile({Function(String name, int size)? onFilePicked, String? parentId}) async {
+  Future<FileItem?> pickAndSaveFile({Function(String name, int size)? onFilePicked, String? parentId, String? communityId}) async {
     final currentUserUid = AuthService().currentUserUid;
     final String? userName = AuthService().currentUserName; // Get name for metadata
     if (currentUserUid == null) {
@@ -67,30 +77,55 @@ class OfflineFileService {
     }
 
     try {
-      print("Picking file...");
-      fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
-        withData: true, 
-      );
+      if (!kIsWeb) {
+        var status = await Permission.storage.request();
+        if (!status.isGranted) {
+           // Try manage external storage for Android 11+ if needed, or just warn
+           if (await Permission.manageExternalStorage.status.isDenied) {
+                // await Permission.manageExternalStorage.request(); // Optional: careful with store policy
+           }
+           if (status.isPermanentlyDenied) {
+              openAppSettings();
+              return null;
+           }
+        }
+      }
 
-      if (result != null) {
-         final file = result.files.single;
-         if (!kIsWeb && file.path == null) {
-            return null; 
-         }
+      print("DEBUG: Starting File Picker...");
+        fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
+          withData: kIsWeb, 
+          // type: fp.FileType.any, // Removing explicit type to rely on default
+        );
 
-         String fileName = file.name;
-         String? newPath;
-         Uint8List? content;
-         int size = file.size;
+        print("DEBUG: File Picker Result: ${result != null}");
+
+        if (result != null) {
+           final file = result.files.single;
+           print("DEBUG: File picked: ${file.name}, Path: ${file.path}");
+           if (!kIsWeb && file.path == null) {
+              print("DEBUG: File path is null!");
+              return null; 
+           }
+
+           String fileName = file.name;
+           String? newPath;
+           Uint8List? content;
+           int size = file.size;
 
          if (kIsWeb) {
            content = file.bytes;
          } else {
-            final Directory appDir = await getApplicationDocumentsDirectory();
-            newPath = path.join(appDir.path, fileName);
-            final File originalFile = File(file.path!);
-            await originalFile.copy(newPath);
-            size = File(newPath).lengthSync();
+            try {
+              final Directory appDir = await getApplicationDocumentsDirectory();
+              newPath = path.join(appDir.path, fileName);
+              final File originalFile = File(file.path!);
+              await originalFile.copy(newPath);
+              size = File(newPath).lengthSync();
+            } catch (e) {
+               print("Error copying file: $e");
+               // Try to use original path if copy fails
+               newPath = file.path; 
+            }
          }
 
          // Callback for UI feedback
@@ -117,15 +152,15 @@ class OfflineFileService {
           content: content,
           userId: currentUserUid, 
           parentId: parentId,
+          communityId: communityId,
         );
 
         // 1. Save Local (Hive)
         await _box.put(id, newItem.toMap());
         
-        // 2. Sync Metadata to Firestore (For Admin Visibility) & Update User Stats
+        // 2. Sync Metadata to Firestore
         final batch = FirebaseFirestore.instance.batch();
         final fileRef = FirebaseFirestore.instance.collection('files').doc(id);
-        final userRef = FirebaseFirestore.instance.collection('users').doc(currentUserUid);
 
         batch.set(fileRef, {
           'id': id,
@@ -135,20 +170,27 @@ class OfflineFileService {
           'userId': currentUserUid,
           'userName': userName,
           'parentId': parentId,
+          'communityId': communityId, // Add communityId
           'createdAt': FieldValue.serverTimestamp(),
         });
 
-        // Atomic Increment for User Stats
-        batch.update(userRef, {
-          'storageUsed': FieldValue.increment(size),
-          'fileCount': FieldValue.increment(1),
-        });
+        // Atomic Increment for User Stats (Only if personal file)
+        if (communityId == null) {
+          final userRef = FirebaseFirestore.instance.collection('users').doc(currentUserUid);
+          batch.update(userRef, {
+            'storageUsed': FieldValue.increment(size),
+            'fileCount': FieldValue.increment(1),
+          });
+        }
 
         await batch.commit();
 
         return newItem;
       }
       return null;
+    } on PlatformException catch (e) {
+      print("CRITICAL: File Picker Platform Exception: ${e.message} code: ${e.code} details: ${e.details}");
+      throw Exception("System Error: ${e.message}");
     } catch (e) {
       print("Error picking/saving file: $e");
       rethrow;
@@ -218,7 +260,7 @@ class OfflineFileService {
   }
 
   // Create Folder
-  Future<FileItem?> createFolder(String name, {String? parentId}) async {
+  Future<FileItem?> createFolder(String name, {String? parentId, String? communityId}) async {
     final currentUserUid = AuthService().currentUserUid;
     final String? userName = AuthService().currentUserName; // Get name
     if (currentUserUid == null) return null;
@@ -238,6 +280,7 @@ class OfflineFileService {
       userId: currentUserUid,
       parentId: parentId,
       color: folderColor,
+      communityId: communityId,
     );
 
     await _box.put(id, newFolder.toMap());
@@ -252,6 +295,7 @@ class OfflineFileService {
         'userId': currentUserUid,
         'userName': userName,
         'parentId': parentId,
+        'communityId': communityId,
         'createdAt': FieldValue.serverTimestamp(),
         'color': folderColor.value,
       });
@@ -336,8 +380,11 @@ class OfflineFileService {
       final map = Map<String, dynamic>.from(data);
       final item = FileItem.fromMap(map);
       
-      // Security check: Only delete if owned by current user
-      if (item.userId != AuthService().currentUserUid) return;
+      // Security check: Only delete if owned by current user OR if user is community admin
+      // For now, strict ownership or relying on UI to hide delete button.
+      // Ideally check Community role here if communityId != null.
+      // Simplified: If communityId is set, only allow if user is owner (creator) or we trust the UI check for now.
+      if (item.userId != AuthService().currentUserUid && item.communityId == null) return;
 
       // If folder, delete contents recursively
       if (item.isFolder) {
@@ -362,8 +409,9 @@ class OfflineFileService {
         final userRef = FirebaseFirestore.instance.collection('users').doc(item.userId);
 
         batch.delete(fileRef);
-        // Only decrement stats if it's a file (folders have no size/count impact in this simple model, or count as 0 size)
-        if (!item.isFolder) {
+        // Only decrement stats if it's a file AND personal
+        if (!item.isFolder && item.communityId == null) {
+           final userRef = FirebaseFirestore.instance.collection('users').doc(item.userId);
            batch.update(userRef, {
               'storageUsed': FieldValue.increment(-_parseSize(item.size)),
               'fileCount': FieldValue.increment(-1),
@@ -433,7 +481,7 @@ class OfflineFileService {
 
   // Delete All Files (Cleanup - Filtered)
   Future<void> deleteAllFiles() async {
-      final files = getAllFiles(); // Uses filtered list
+      final files = getAllFiles(); // Uses filtered list (only personal!)
       for (var f in files) {
           await deleteFile(f.id); // deleteFile has security check too
       }

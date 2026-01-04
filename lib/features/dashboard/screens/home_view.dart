@@ -21,6 +21,7 @@ import 'package:airdash/features/transfer/services/signaling_service.dart';
 import 'package:airdash/features/transfer/screens/receiver_progress_screen.dart';
 import 'package:airdash/features/transfer/widgets/transfer_user_picker_dialog.dart';
 import 'package:airdash/features/transfer/screens/transfer_progress_screen.dart';
+import 'package:airdash/features/communities/screens/communities_view.dart';
 
 class HomeView extends StatefulWidget {
   final VoidCallback? onNavigateToFiles;
@@ -246,6 +247,27 @@ class _HomeViewState extends State<HomeView> {
                           _handleCleanup,
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                 _buildAnimatedItem(
+                  delay: 350,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildActionButton(
+                          context,
+                          "Communities",
+                          LucideIcons.users,
+                          Colors.teal,
+                          () {
+                             Navigator.push(context, MaterialPageRoute(builder: (_) => const CommunitiesView()));
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(child: SizedBox()), // Placeholder for balance
                     ],
                   ),
                 ),
