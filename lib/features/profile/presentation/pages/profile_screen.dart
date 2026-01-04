@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -13,8 +14,16 @@ import '../../../auth/presentation/pages/verification_screen.dart';
 import '../../../../core/theme/theme_controller.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final ImagePicker _picker = ImagePicker();
+  bool _isUploading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +39,13 @@ class ProfileScreen extends StatelessWidget {
         bool isVerified = authUser?.emailVerified ?? false;
 
         // Overlay Firestore data if available
+        String? photoBase64;
         if (snapshot.hasData && snapshot.data!.exists) {
            final data = snapshot.data!.data() as Map<String, dynamic>;
            userName = data['name'] ?? userName;
            // userEmail = data['email'] ?? userEmail; // Usually same
            photoUrl = data['photoUrl'] ?? photoUrl;
+           photoBase64 = data['photoBase64'];
            phoneNumber = data['phoneNumber'] ?? '';
         }
 
@@ -45,208 +56,222 @@ class ProfileScreen extends StatelessWidget {
         elevation: 0,
         backgroundColor: Colors.transparent,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Profile Card (Purple Gradient)
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF8A2387), Color(0xFFE94057), Color(0xFFF27121)], // Example gradient
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                   BoxShadow(color: Colors.purple.withOpacity(0.3), blurRadius: 20, offset: const Offset(0,10))
-                ],
-              ),
-              child: Row(
-                children: [
-                   Stack(
-                     children: [
-                       CircleAvatar(
-                         radius: 35,
-                         backgroundColor: Colors.white,
-                         child: CircleAvatar(
-                           radius: 32,
-
-                           backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                           child: photoUrl == null ? const Icon(LucideIcons.user, size: 30, color: Colors.grey) : null,
-                         ),
-                       ),
-                       Positioned(
-                         bottom: 0,
-                         right: 0,
-                         child: GestureDetector(
-                           onTap: () => _showImagePicker(context),
-                           child: Container(
-                             padding: const EdgeInsets.all(4),
-                             decoration: const BoxDecoration(
-                               color: Colors.white,
-                               shape: BoxShape.circle,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Profile Card (Purple Gradient)
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF8A2387), Color(0xFFE94057), Color(0xFFF27121)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                       BoxShadow(color: Colors.purple.withOpacity(0.3), blurRadius: 20, offset: const Offset(0,10))
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                       Stack(
+                         children: [
+                           CircleAvatar(
+                             radius: 35,
+                             backgroundColor: Colors.white,
+                             child: CircleAvatar(
+                               radius: 32,
+                               backgroundImage: photoBase64 != null 
+                                  ? MemoryImage(base64Decode(photoBase64))
+                                  : (photoUrl != null ? NetworkImage(photoUrl) : null) as ImageProvider?,
+                               child: (photoBase64 == null && photoUrl == null) 
+                                  ? const Icon(LucideIcons.user, size: 30, color: Colors.grey) 
+                                  : null,
                              ),
-                             child: const Icon(LucideIcons.camera, size: 14, color: Colors.black87),
                            ),
+                           Positioned(
+                             bottom: 0,
+                             right: 0,
+                             child: GestureDetector(
+                               onTap: () => _showImagePicker(context),
+                               child: Container(
+                                 padding: const EdgeInsets.all(4),
+                                 decoration: const BoxDecoration(
+                                   color: Colors.white,
+                                   shape: BoxShape.circle,
+                                 ),
+                                 child: const Icon(LucideIcons.camera, size: 14, color: Colors.black87),
+                               ),
+                             ),
+                           ),
+                         ],
+                       ),
+                       const SizedBox(width: 16),
+                       Expanded(
+                         child: Column(
+                           crossAxisAlignment: CrossAxisAlignment.start,
+                           children: [
+                             Text(
+                               userName,
+                               style: GoogleFonts.outfit(
+                                 color: Colors.white,
+                                 fontSize: 20,
+                                 fontWeight: FontWeight.bold,
+                               ),
+                             ),
+                             Text(
+                               isVerified ? 'Verified Account' : 'Unverified Account',
+                               style: GoogleFonts.outfit(
+                                 color: Colors.white.withOpacity(0.8),
+                                 fontSize: 14,
+                               ),
+                             ),
+                           ],
                          ),
                        ),
-                     ],
+                       IconButton(
+                         icon: const Icon(LucideIcons.edit2, color: Colors.white),
+                         onPressed: () {
+                            _showEditProfileDialog(context, userName, phoneNumber, authUser);
+                         },
+                       )
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // GENERAL Section
+                _buildSectionHeader(context, "GENERAL"),
+                _buildSettingsTile(
+                  context,
+                  icon: LucideIcons.user,
+                  title: "Personal Information",
+                  onTap: () => _showEditProfileDialog(context, userName, phoneNumber, authUser),
+                ),
+                 _buildSettingsTile(
+                  context,
+                  icon: LucideIcons.crown,
+                  title: "Upgrade to Pro",
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(8)),
+                    child: Text('PRO', style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black)),
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UpgradeScreen())),
+                ),
+                _buildSettingsTile(
+                  context,
+                  icon: LucideIcons.badgeCheck,
+                  title: "Verify Account",
+                  onTap: () async {
+                      if (authUser != null && !authUser.emailVerified) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const VerificationScreen()),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Already verified.')));
+                      }
+                  },
+                ),
+                 _buildSettingsTile(
+                  context,
+                  icon: LucideIcons.lock,
+                  title: "Change Password",
+                  onTap: () {
+                      if (userEmail.isNotEmpty) {
+                        AuthService().resetPassword(userEmail);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Password reset email sent to $userEmail')));
+                      }
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                // APPEARANCE Section
+                _buildSectionHeader(context, "APPEARANCE"),
+                ValueListenableBuilder(
+                  valueListenable: ThemeController().themeMode,
+                  builder: (context, themeMode, _) {
+                     final isDark = themeMode == ThemeMode.dark;
+                     return _buildSettingsTile(
+                       context,
+                       icon: LucideIcons.moon,
+                       title: "Dark Mode",
+                       trailing: Switch(
+                         value: isDark,
+                         activeColor: Theme.of(context).colorScheme.primary,
+                         onChanged: (_) => ThemeController().toggleTheme(),
+                       ),
+                     );
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                // SUPPORT Section
+                _buildSectionHeader(context, "SUPPORT"),
+                _buildSettingsTile(
+                  context,
+                  icon: LucideIcons.helpCircle,
+                  title: "Help & Support",
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpSupportScreen())),
+                ),
+                 _buildSettingsTile(
+                  context,
+                  icon: LucideIcons.shieldCheck,
+                  title: "Privacy Policy",
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
+                ),
+
+                const SizedBox(height: 30),
+                 // Logout
+                ListTile(
+                   contentPadding: EdgeInsets.zero,
+                   onTap: () async {
+                     await AuthService().signOut();
+                     if (mounted) {
+                       Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          (route) => false,
+                       );
+                     }
+                   },
+                   leading: Container(
+                     padding: const EdgeInsets.all(10),
+                     decoration: BoxDecoration(
+                       color: Colors.red.withOpacity(0.1),
+                       borderRadius: BorderRadius.circular(10),
+                     ),
+                     child: const Icon(LucideIcons.logOut, color: Colors.red),
                    ),
-                   const SizedBox(width: 16),
-                   Expanded(
-                     child: Column(
-                       crossAxisAlignment: CrossAxisAlignment.start,
-                       children: [
-                         Text(
-                           userName,
-                           style: GoogleFonts.outfit(
-                             color: Colors.white,
-                             fontSize: 20,
-                             fontWeight: FontWeight.bold,
-                           ),
-                         ),
-                         Text(
-                           isVerified ? 'Verified Account' : 'Unverified Account',
-                           style: GoogleFonts.outfit(
-                             color: Colors.white.withOpacity(0.8),
-                             fontSize: 14,
-                           ),
-                         ),
-                       ],
+                   title: Text(
+                     "Log Out",
+                     style: GoogleFonts.outfit(
+                       fontWeight: FontWeight.w600,
+                       fontSize: 16,
+                       color: Colors.red,
                      ),
                    ),
-                   IconButton(
-                     icon: const Icon(LucideIcons.edit2, color: Colors.white),
-                     onPressed: () {
-                        // TODO: Edit Profile Dialog
-                        _showEditProfileDialog(context, userName, phoneNumber, authUser);
-                     },
-                   )
-                ],
-              ),
+                ),
+                 const SizedBox(height: 20),
+                 Center(child: Text("Version 1.0.0", style: TextStyle(color: Colors.grey[400]))),
+              ],
             ),
-
-            const SizedBox(height: 30),
-
-            // GENERAL Section
-            _buildSectionHeader(context, "GENERAL"),
-            _buildSettingsTile(
-              context,
-              icon: LucideIcons.user,
-              title: "Personal Information",
-              onTap: () => _showEditProfileDialog(context, userName, phoneNumber, authUser),
-            ),
-             _buildSettingsTile(
-              context,
-              icon: LucideIcons.crown,
-              title: "Upgrade to Pro",
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(8)),
-                child: Text('PRO', style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black)),
-              ),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UpgradeScreen())),
-            ),
-            _buildSettingsTile(
-              context,
-              icon: LucideIcons.badgeCheck,
-              title: "Verify Account",
-              onTap: () async {
-                  if (authUser != null && !authUser.emailVerified) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const VerificationScreen()),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Already verified.')));
-                  }
-              },
-            ),
-             _buildSettingsTile(
-              context,
-              icon: LucideIcons.lock,
-              title: "Change Password",
-              onTap: () {
-                  if (userEmail.isNotEmpty) {
-                    AuthService().resetPassword(userEmail);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Password reset email sent to $userEmail')));
-                  }
-              },
-            ),
-
-            const SizedBox(height: 20),
-
-            // APPEARANCE Section
-            _buildSectionHeader(context, "APPEARANCE"),
-            ValueListenableBuilder(
-              valueListenable: ThemeController().themeMode,
-              builder: (context, themeMode, _) {
-                 final isDark = themeMode == ThemeMode.dark;
-                 return _buildSettingsTile(
-                   context,
-                   icon: LucideIcons.moon,
-                   title: "Dark Mode",
-                   trailing: Switch(
-                     value: isDark,
-                     activeColor: Theme.of(context).colorScheme.primary,
-                     onChanged: (_) => ThemeController().toggleTheme(),
-                   ),
-                 );
-              },
-            ),
-
-            const SizedBox(height: 20),
-
-            // SUPPORT Section
-            _buildSectionHeader(context, "SUPPORT"),
-            _buildSettingsTile(
-              context,
-              icon: LucideIcons.helpCircle,
-              title: "Help & Support",
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpSupportScreen())),
-            ),
-             _buildSettingsTile(
-              context,
-              icon: LucideIcons.shieldCheck,
-              title: "Privacy Policy",
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
-            ),
-
-            const SizedBox(height: 30),
-             // Logout
-            ListTile(
-               contentPadding: EdgeInsets.zero,
-               onTap: () async {
-                 await AuthService().signOut();
-                 Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (route) => false,
-                 );
-               },
-               leading: Container(
-                 padding: const EdgeInsets.all(10),
-                 decoration: BoxDecoration(
-                   color: Colors.red.withOpacity(0.1),
-                   borderRadius: BorderRadius.circular(10),
-                 ),
-                 child: const Icon(LucideIcons.logOut, color: Colors.red),
-               ),
-               title: Text(
-                 "Log Out",
-                 style: GoogleFonts.outfit(
-                   fontWeight: FontWeight.w600,
-                   fontSize: 16,
-                   color: Colors.red,
-                 ),
-               ),
-            ),
-             const SizedBox(height: 20),
-             Center(child: Text("Version 1.0.0", style: TextStyle(color: Colors.grey[400]))),
-          ],
-        ),
+          ),
+          
+          if (_isUploading)
+             Container(
+               color: Colors.black54,
+               child: const Center(child: CircularProgressIndicator()),
+             ),
+        ],
       ),
     );
 
@@ -331,11 +356,13 @@ class ProfileScreen extends StatelessWidget {
     return GestureDetector(
       onTap: () async {
         Navigator.pop(context); // Close sheet
-        final ImagePicker picker = ImagePicker();
-        final XFile? image = await picker.pickImage(source: source, imageQuality: 70);
-        
-        if (image != null) {
-          _uploadImage(context, File(image.path));
+        try {
+          final XFile? image = await _picker.pickImage(source: source, imageQuality: 70);
+          if (image != null) {
+            _uploadImage(File(image.path));
+          }
+        } catch (e) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking image: $e')));
         }
       },
       child: Column(
@@ -352,28 +379,23 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _uploadImage(BuildContext context, File file) async {
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
+  Future<void> _uploadImage(File file) async {
+    if (!mounted) return;
+    setState(() => _isUploading = true);
 
     try {
       await AuthService().updateProfilePicture(file);
-      Navigator.pop(context); // Close loader
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile picture updated!')));
-      
-      // Force Rebuild/Update UI? 
-      // Since it's a StatelessWidget, we might rely on the AuthService stream or just navigate/replace.
-      // Or better, convert ProfileScreen to StatefulWidget to setState or rely on AuthChanges.
-      // For now, let's just show the success message. The user object in build() is synchronous. 
-      // A quick hack for a StatelessWidget to refresh is to push replacement or just let user re-enter.
-      // Ideally, ProfileScreen should listen to Auth stream.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile picture updated!')));
+      }
     } catch (e) {
-      Navigator.pop(context); // Close loader
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
     }
   }
 
@@ -414,15 +436,19 @@ class ProfileScreen extends StatelessWidget {
                        });
                     }
                     
-                    // Update Phone (Firestore only)
+                    // Update Phone
                     if (phoneController.text != currentPhone) {
                        await AuthService().updatePhoneNumber(phoneController.text);
                     }
 
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated!')));
+                    if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated!')));
+                    }
                   } catch (e) {
-                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                     if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                     }
                   }
                },
                child: const Text('Save'),

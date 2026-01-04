@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -145,30 +146,34 @@ class AuthService {
     }
     return null;
   }
-  // Update Profile Picture
+  // Update Profile Picture (Base64 Strategy)
   Future<void> updateProfilePicture(File imageFile) async {
     try {
       if (currentUser == null) return;
       
       final String uid = currentUser!.uid;
-      final Reference storageRef = FirebaseStorage.instance
-          .ref()
-          .child('profile_images')
-          .child('$uid.jpg');
-          
-      // Upload
-      await storageRef.putFile(imageFile);
       
-      // Get URL
-      final String downloadUrl = await storageRef.getDownloadURL();
+      // 1. Read Bytes
+      final bytes = await imageFile.readAsBytes();
       
-      // Update Auth Profile
-      await currentUser!.updatePhotoURL(downloadUrl);
+      // 2. Simple validation (Avoid huge files)
+      if (bytes.length > 5 * 1024 * 1024) {
+         throw Exception("Image too large (Max 5MB). Please choose a smaller one.");
+      }
       
-      // Update Firestore Profile (Redundancy)
+      // 3. Convert to Base64
+      // NOTE: In a production app, we should resize/compress this image client-side 
+      // to avoid bloating Firestore. For now, we assume reasonable input or add simple check.
+      String base64Image = base64Encode(bytes);
+      
+      // 4. Update Firestore
       await _firestore.collection('users').doc(uid).update({
-        'photoUrl': downloadUrl,
+        'photoBase64': base64Image,
+        'photoUrl': null, // Clear old URL so UI prefers Base64
       });
+      
+      // 5. Update Auth (Cannot set Base64 as photoURL usually, so we leave it or set a placeholder)
+      // await currentUser!.updatePhotoURL(null); 
       
     } catch (e) {
       print("Error uploading profile picture: $e");
