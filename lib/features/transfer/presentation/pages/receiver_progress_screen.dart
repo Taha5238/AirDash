@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:airdash/features/files/data/models/file_item.dart';
 import 'package:airdash/features/files/data/repositories/offline_file_service.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:airdash/features/transfer/data/services/webrtc_service.dart';
 
 class ReceiverProgressScreen extends StatefulWidget {
@@ -48,6 +49,23 @@ class _ReceiverProgressScreenState extends State<ReceiverProgressScreen> {
                }
            };
 
+           _webRTCService.onConnectionState = (state) {
+               if (mounted) {
+                   setState(() {
+                        if (state == RTCIceConnectionState.RTCIceConnectionStateConnected) {
+                             _status = "Connected (P2P). Waiting for data...";
+                        } else if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+                             _status = "Disconnected";
+                        } else if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
+                             _status = "Connection Failed";
+                             _error = "P2P Connection Failed";
+                        } else if (state == RTCIceConnectionState.RTCIceConnectionStateChecking) {
+                             _status = "Checking connection...";
+                        }
+                   });
+               }
+           };
+
            _webRTCService.onFileReceived = (Uint8List fileData, Map<String, dynamic> metadata) async {
                if (mounted) {
                    setState(() => _status = "Saving file...");
@@ -76,7 +94,9 @@ class _ReceiverProgressScreenState extends State<ReceiverProgressScreen> {
 
            await _webRTCService.acceptConnection(widget.transferId, widget.offer);
            
-           if (mounted) setState(() => _status = "Connected. Waiting for data...");
+           await _webRTCService.acceptConnection(widget.transferId, widget.offer);
+           
+           if (mounted) setState(() => _status = "Initializing connection...");
 
       } catch (e) {
           if (mounted) {

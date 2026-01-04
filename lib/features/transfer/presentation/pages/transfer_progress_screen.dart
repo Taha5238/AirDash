@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -86,15 +87,14 @@ class _TransferProgressScreenState extends State<TransferProgressScreen> {
               // Let's use File assuming native for now.
               // We'll read it using dart:io. FileItem has localPath.
               if (widget.file.localPath != null) {
-                  // We need dart:io import in this file? No, I only imported webrtc.
-                  // I should add dart:io if I want to read file. But let's check imports.
-                  // Default flutter imports don't include dart:io? 
-                  // I need to add import 'dart:io';
-                  // But wait, the original file I viewed didn't import dart:io.
-                  // Ah, I need to add it.
-                  throw Exception("File reading not implemented for path yet. Use content bytes.");
+                  final file = File(widget.file.localPath!);
+                  if (await file.exists()) {
+                    bytes = await file.readAsBytes();
+                  } else {
+                     throw Exception("File not found at path: ${widget.file.localPath}");
+                  }
               } else {
-                  throw Exception("No content or path.");
+                  throw Exception("No content or path available to send.");
               }
           }
           

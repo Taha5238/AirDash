@@ -9,6 +9,7 @@ import 'signaling_service.dart';
 typedef OnDataChannelState = void Function(RTCDataChannelState state);
 typedef OnFileReceived = void Function(Uint8List fileData, Map<String, dynamic> metadata);
 typedef OnProgress = void Function(double progress);
+typedef OnConnectionState = void Function(RTCIceConnectionState state);
 
 class WebRTCService {
   RTCPeerConnection? _peerConnection;
@@ -18,6 +19,7 @@ class WebRTCService {
   OnDataChannelState? onDataChannelState;
   OnFileReceived? onFileReceived;
   OnProgress? onTxProgress;
+  OnConnectionState? onConnectionState;
   
   // Buffers for receiving
   List<int> _incomingBuffer = [];
@@ -43,6 +45,10 @@ class WebRTCService {
       
     _dataChannel = await _peerConnection!.createDataChannel("fileTransfer", dataChannelDict);
     _setupDataChannel(_dataChannel!);
+
+    _peerConnection!.onIceConnectionState = (state) {
+        if (onConnectionState != null) onConnectionState!(state);
+    };
 
     // Create Offer
     RTCSessionDescription offer = await _peerConnection!.createOffer();
@@ -101,6 +107,10 @@ class WebRTCService {
           _setupDataChannel(channel);
       };
 
+      _peerConnection!.onIceConnectionState = (state) {
+          if (onConnectionState != null) onConnectionState!(state);
+      };
+
       _peerConnection!.onIceCandidate = (candidate) {
            _signaling.addCandidate(transferId, candidate.toMap(), 'receiver');
       };
@@ -147,11 +157,17 @@ class WebRTCService {
                if (message.text.startsWith("METADATA:")) {
                    final jsonStr = message.text.substring(9);
                    _incomingFileMetadata = json.decode(jsonStr);
-                   if (_incomingFileMetadata != null) {
-                       _expectedSize = int.parse(_incomingFileMetadata!['size'].replaceAll(RegExp(r'[^0-9]'), '')); 
-                       _receivedBytes = 0;
-                       _incomingBuffer = [];
-                   }
+                    if (_incomingFileMetadata != null) {
+                        if (_incomingFileMetadata!.containsKey('sizeBytes')) {
+                             _expectedSize = _incomingFileMetadata!['sizeBytes'];
+                        } else {
+                             // Fallback (Risk of error)
+                             _expectedSize = int.parse(_incomingFileMetadata!['size'].replaceAll(RegExp(r'[^0-9]'), '')); 
+                        }
+                        
+                        _receivedBytes = 0;
+                        _incomingBuffer = [];
+                    }
                }
           }
       };

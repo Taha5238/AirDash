@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+  
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Allow authenticated users to read profiles (needed for various lookups)
+      allow read: if isAuthenticated();
+      // Allow users to edit their own profile, OR admins to edit anyone
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+    
+    // Files Collection
+    match /files/{fileId} {
+      // Admins have full access
+      allow read, write: if isAdmin();
+      
+      // Regular users access their own files
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Config Collection (App Settings)
+    match /config/{document=**} {
+      // Must be public read so users can check if registration is allowed BEFORE logging in
+      allow read: if true; 
+      
+      // Only admins can change settings
+      allow write: if isAdmin(); 
+    }
+
+    // Transfer Signals: For WebRTC P2P connection establishment
+    match /transfer_signals/{signalId} {
+      // Allow any authenticated user to initiate a signal (create offer)
+      allow create: if isAuthenticated();
+      
+      // Allow participants (sender or receiver) to read and update the signal (e.g. adding answer)
+      allow read, update: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid
+      );
+      
+      // Allow delete if user is a participant
+      allow delete: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid
+      );
+
+       // ICE Candidates Subcollection
+       match /candidates/{candidateId} {
+         // Allow participants to add/read candidates
+         allow read, write: if isAuthenticated();
+       }
+    }
+  }
+}
