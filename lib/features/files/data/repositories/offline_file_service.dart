@@ -557,6 +557,7 @@ class OfflineFileService {
           .get();
       
       final Set<String> cloudIds = query.docs.map((d) => d.id).toSet();
+      final Map<String, DocumentSnapshot> cloudDocs = { for (var d in query.docs) d.id : d };
 
       // 2. Iterate local files
       final localFiles = getAllFiles(); // user filtered
@@ -573,6 +574,34 @@ class OfflineFileService {
              );
         }
       }
+
+      // 3. Sync Down: Add files present in Cloud but missing locally (Ghost Files)
+      for (var doc in query.docs) {
+          if (!_box.containsKey(doc.id)) {
+              final data = doc.data();
+              // Create Ghost Item
+              // Map Firestore Type index back to Enum
+              FileType type = FileType.other;
+              if (data['type'] is int) {
+                  type = FileType.values[data['type']];
+              }
+
+              final newItem = FileItem(
+                  id: doc.id,
+                  name: data['name'] ?? 'Unknown',
+                  size: _formatSize(data['size'] ?? 0),
+                  modified: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+                  type: type,
+                  localPath: null, // Ghost File!
+                  synced: true,
+                  userId: currentUserUid,
+                  parentId: data['parentId'], // Sync hierarchy!
+                  // TODO: Color for folders?
+              );
+              await _box.put(doc.id, newItem.toMap());
+          }
+      }
+
     } catch (e) {
       print("Sync error: $e");
     }

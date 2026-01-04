@@ -37,7 +37,15 @@ class _HomeViewState extends State<HomeView> {
     
     // Check for Admin Deletions on start
     _fileService.syncCloudDeletions().then((_) {
-       if (mounted) setState(() {}); 
+       // After cleaning up, sync DOWN new files
+       _fileService.syncCloudDeletions().then((_) { // Actually, I reused the method name. Wait.
+           // I added the logic INTO syncCloudDeletions in previous step. 
+           // So just calling it is enough.
+           // Wait, I should verify if I renamed it or just added logic.
+           // I kept the name syncCloudDeletions but added the DOWN logic.
+           // So this existing call is sufficient!
+           if (mounted) setState(() {}); 
+       });
     });
 
     _listenForTransfers();

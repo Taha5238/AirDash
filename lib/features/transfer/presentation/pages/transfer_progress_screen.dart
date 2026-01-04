@@ -1,5 +1,6 @@
-import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:airdash/core/utils/file_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:airdash/features/files/data/models/file_item.dart';
@@ -79,22 +80,14 @@ class _TransferProgressScreenState extends State<TransferProgressScreen> {
               bytes = widget.file.content!;
           } else {
               // Read from file
-              // Assuming dart:io is available (mobile/desktop app)
-              // If web, content should be populated.
-              // For now, this is simpler to just assume content or use dart:io
-              // Since we are adding P2P, we likely need File reading logic here again if content is null.
-              // But FileItem should ideally help us here.
-              // Let's use File assuming native for now.
-              // We'll read it using dart:io. FileItem has localPath.
-              if (widget.file.localPath != null) {
-                  final file = File(widget.file.localPath!);
-                  if (await file.exists()) {
-                    bytes = await file.readAsBytes();
-                  } else {
-                     throw Exception("File not found at path: ${widget.file.localPath}");
-                  }
+              if (kIsWeb) {
+                  throw Exception("Web file reading not fully implemented yet. Ensure content is passed.");
               } else {
-                  throw Exception("No content or path available to send.");
+                  if (widget.file.localPath != null) {
+                       bytes = await FileUtils.readBytes(widget.file.localPath!);
+                   } else {
+                       throw Exception("No content or path available to send.");
+                   }
               }
           }
           

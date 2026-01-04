@@ -8,3 +8,8 @@
 
 # WebRTC (if needed, though usually auto-kept)
 -keep class org.webrtc.** { *; }
+
+# Suppress Warnings (Common fix for initial R8 setup)
+-dontwarn **
+-keepattributes *Annotation*
+

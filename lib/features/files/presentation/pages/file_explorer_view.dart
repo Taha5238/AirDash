@@ -233,6 +233,21 @@ class _FileExplorerViewState extends State<FileExplorerView> {
         return;
     }
 
+    // GHOST FILE CHECK
+    if (file.localPath == null && file.content == null && file.synced) {
+        showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+                title: const Text("File Not Available Locally"),
+                content: const Text("This file exists on another device (synced metadata). To view it here, use the 'Transfer' feature from the other device."),
+                actions: [
+                    TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK")),
+                ],
+            )
+        );
+        return;
+    }
+
     if (ResponsiveLayout.isDesktop(context)) {
       setState(() {
         _selectedFile = file;
