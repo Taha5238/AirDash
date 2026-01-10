@@ -4,6 +4,11 @@
 *.pyc
 *.swp
 .DS_Store
+hs_err_pid*
+replay_pid*
+java_pid*
+*.hprof
+*.prof
 .atom/
 .build/
 .buildlog/
@@ -43,3 +48,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Binary files
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.apk
+android/app/release/
+android/app/build/
+**/build/
+*.keystore
+*.jks

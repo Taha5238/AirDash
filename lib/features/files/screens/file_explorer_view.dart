@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/utils/responsive_layout.dart';
 import 'package:airdash/features/files/models/file_item.dart';
 import 'package:airdash/features/files/models/file_type.dart';
+import 'package:airdash/features/files/models/file_type.dart';
 import 'package:airdash/features/files/repositories/offline_file_service.dart';
+import 'package:airdash/features/files/repositories/supabase_file_service.dart';
 import '../widgets/folder_picker_dialog.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+
 
 import 'file_detail_view.dart';
 import 'file_search_delegate.dart';
@@ -25,6 +31,7 @@ class FileExplorerView extends StatefulWidget {
 
 class _FileExplorerViewState extends State<FileExplorerView> {
   final OfflineFileService _fileService = OfflineFileService();
+  final SupabaseFileService _supabaseService = SupabaseFileService();
   // List<FileItem> _files = []; // Handled by ValueListenableBuilder
   FileItem? _selectedFile;
   String _searchQuery = '';
@@ -86,14 +93,14 @@ class _FileExplorerViewState extends State<FileExplorerView> {
       }
   }
 
-  Future<void> _renameFolder(FileItem folder) async {
+  Future<void> _renameItem(FileItem item) async {
        String? newName;
       await showDialog(
          context: context,
          builder: (context) {
-             final controller = TextEditingController(text: folder.name);
+             final controller = TextEditingController(text: item.name);
              return AlertDialog(
-                 title: const Text("Rename Folder"),
+                 title: Text("Rename ${item.isFolder ? 'Folder' : 'File'}"),
                  content: TextField(
                     controller: controller,
                     decoration: const InputDecoration(hintText: "New Name"),
@@ -114,8 +121,21 @@ class _FileExplorerViewState extends State<FileExplorerView> {
          }
       );
 
-      if (newName != null && newName!.isNotEmpty && newName != folder.name) {
-          await _fileService.renameFolder(folder.id, newName!);
+      if (newName != null && newName!.isNotEmpty && newName != item.name) {
+          try {
+            if (item.isFolder) {
+                await _fileService.renameFolder(item.id, newName!);
+            } else {
+                await _fileService.renameFile(item.id, newName!);
+                // Sync to Supabase if it's a cloud backup
+                if (item.synced) {
+                    await _supabaseService.renameBackup(item.id, newName!);
+                }
+            }
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Renamed successfully")));
+          } catch (e) {
+             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Rename failed: $e"))); 
+          }
       }
   }
 
@@ -207,6 +227,132 @@ class _FileExplorerViewState extends State<FileExplorerView> {
         );
       }
     }
+  }
+
+  Future<void> _backupFile(FileItem file) async {
+    // Check if file is actually local
+    if (file.localPath == null && file.content == null) {
+       ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot backup: File is not downloaded (Ghost File).'), backgroundColor: Colors.orange),
+       );
+       return;
+    }
+
+    try {
+      await _supabaseService.backupFile(file);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File backed up successfully')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _restoreFile() async {
+    try {
+      // 1. Fetch cloud files
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+          throw Exception("User not logged in");
+      }
+      final cloudFiles = await _supabaseService.getCloudFiles(user.uid);
+      
+      if (!mounted) return;
+
+      // 2. Show dialog to pick
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Restore from Cloud"),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 300,
+            child: cloudFiles.isEmpty 
+              ? const Center(child: Text("No backups found."))
+              : ListView.builder(
+                  itemCount: cloudFiles.length,
+                  itemBuilder: (context, index) {
+                    final data = cloudFiles[index];
+                    return ListTile(
+                      leading: const Icon(LucideIcons.cloud),
+                      title: Text(data['file_name'] ?? 'Unknown'),
+                      subtitle: Text(data['file_size'] ?? ''),
+                      trailing: IconButton(
+                        icon: const Icon(LucideIcons.download),
+                        onPressed: () async {
+                          Navigator.pop(context); // Close dialog first
+                          await _executeRestore(data);
+                        },
+                      ),
+                    );
+                  },
+              ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Close"),
+            )
+          ],
+        ),
+      );
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+         SnackBar(content: Text('Error fetching backups: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _executeRestore(Map<String, dynamic> data) async {
+      try {
+           final String path = data['storage_path']; // Correct key
+           final String name = data['file_name'];    // Correct key
+           
+           final bytes = await _supabaseService.downloadFileContent(path);
+           
+           // Save locally
+           final dir = await getApplicationDocumentsDirectory();
+           final file = File('${dir.path}/$name');
+           await file.writeAsBytes(bytes);
+           
+           // Resolve FileType from String
+           FileType type = FileType.other;
+           final String? typeStr = data['file_type'];
+           if (typeStr != null) {
+              try {
+                 type = FileType.values.firstWhere((e) => e.toString().split('.').last == typeStr);
+              } catch (_) {}
+           }
+
+           final user = FirebaseAuth.instance.currentUser;
+           if (user == null) throw Exception("User not logged in");
+
+           final newFile = FileItem(
+               id: data['id'], 
+               name: name,
+               size: data['file_size'] ?? '0 B',
+               modified: DateTime.now(),
+               type: type,
+               localPath: file.path,
+               parentId: _currentFolderId,
+               userId: user.uid,
+           );
+           
+           final box = Hive.box('filesBox');
+           await box.put(newFile.id, newFile.toMap());
+           
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('File restored')),
+           );
+
+      } catch (e) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
+           );
+      }
   }
 
   void _onSearch(String query) {
@@ -370,13 +516,15 @@ class _FileExplorerViewState extends State<FileExplorerView> {
                   onCreateFolder: _createFolder,
                   onDelete: _deleteFile,
                   onShare: _shareFile,
-                  onRename: _renameFolder,
+                  onRename: _renameItem,
                   onMove: _moveFile,
                   onSearch: _onSearch,
                   onFilter: _onFilter,
                   currentFolderId: _currentFolderId,
                   onNavigateUp: _navigateUp,
                   onSendToUser: _sendToUser,
+                  onRestore: _restoreFile,
+                  onBackup: _backupFile,
                 ),
               ),
               const VerticalDivider(width: 1),
@@ -402,13 +550,15 @@ class _FileExplorerViewState extends State<FileExplorerView> {
             onCreateFolder: _createFolder,
             onDelete: _deleteFile,
             onShare: _shareFile,
-            onRename: _renameFolder,
+            onRename: _renameItem,
             onMove: _moveFile,
             onSearch: _onSearch,
             onFilter: _onFilter,
             currentFolderId: _currentFolderId,
             onNavigateUp: _navigateUp,
             onSendToUser: _sendToUser,
+            onRestore: _restoreFile,
+            onBackup: _backupFile,
           );
         }
       },
@@ -431,6 +581,8 @@ class _FileListView extends StatelessWidget {
   final String? currentFolderId;
   final VoidCallback onNavigateUp;
   final Function(FileItem) onSendToUser;
+  final VoidCallback onRestore;
+  final Function(FileItem) onBackup;
 
   const _FileListView({
     required this.files,
@@ -447,6 +599,8 @@ class _FileListView extends StatelessWidget {
     this.currentFolderId,
     required this.onNavigateUp,
     required this.onSendToUser,
+    required this.onRestore,
+    required this.onBackup,
   });
 
   @override
@@ -510,6 +664,11 @@ class _FileListView extends StatelessWidget {
                  tooltip: "Upload",
                  onPressed: onUpload,
               ),
+              IconButton(
+                 icon: const Icon(LucideIcons.download, size: 20),
+                 tooltip: "Restore from Cloud",
+                 onPressed: onRestore,
+              ),
             ],
           ),
         ),
@@ -534,6 +693,7 @@ class _FileListView extends StatelessWidget {
                     final isSelected = selectedFile?.id == file.id;
 
                     return ListTile(
+                      key: ValueKey(file.id),
                       selected: isSelected,
                       selectedTileColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
                       leading: Icon(
@@ -569,6 +729,8 @@ class _FileListView extends StatelessWidget {
                                   onMove(file);
                               } else if (value == 'transfer') {
                                   onSendToUser(file);
+                              } else if (value == 'backup') {
+                                  onBackup(file);
                               }
                             },
                             itemBuilder: (BuildContext context) {
@@ -580,8 +742,9 @@ class _FileListView extends StatelessWidget {
                               }).toList()
                               ..addAll([
                                   const PopupMenuItem(value: 'move', child: Text("Move to...")),
-                                  if (file.isFolder) const PopupMenuItem(value: 'rename', child: Text("Rename")),
+                                  const PopupMenuItem(value: 'rename', child: Text("Rename")),
                                   if (!file.isFolder) const PopupMenuItem(value: 'transfer', child: Text("Send to User (P2P)")),
+                                  if (!file.isFolder) const PopupMenuItem(value: 'backup', child: Text("Backup to Cloud")),
                               ]);
                             },
                           ),

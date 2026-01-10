@@ -24,16 +24,7 @@ class _AdminFileViewState extends State<AdminFileView> {
   }
 
   void _navigateUp() {
-      // Simple implementation: Go strictly to root? 
-      // Or finding parent? Since we don't have the parent object easily without lookups,
-      // and this is a simple admin view, let's just go to root or implement a stack if needed.
-      // But wait, if we are deep, we need a stack.
-      // For now, let's just set to null (Root) if we go back, or maybe build a breadcrumb?
-      // Let's use a simple list stack for history if we want full nav.
-      // Actually, standard file explorer behavior: Back goes to parent.
-      // Querying the folder's parent might be complex with StreamBuilder.
-      // Let's try to query the folder doc from the full list if possible?
-      // No, let's just use a List<String> navigationStack.
+
       if (_folderStack.isNotEmpty) {
           setState(() {
               _folderStack.removeLast();

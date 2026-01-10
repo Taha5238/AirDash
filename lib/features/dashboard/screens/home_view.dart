@@ -241,23 +241,6 @@ class _HomeViewState extends State<HomeView> {
                       Expanded(
                         child: _buildActionButton(
                           context,
-                          "Cleanup",
-                          LucideIcons.trash2,
-                          Colors.red,
-                          _handleCleanup,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                 _buildAnimatedItem(
-                  delay: 350,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildActionButton(
-                          context,
                           "Communities",
                           LucideIcons.users,
                           Colors.teal,
@@ -266,8 +249,26 @@ class _HomeViewState extends State<HomeView> {
                           },
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      const Expanded(child: SizedBox()), // Placeholder for balance
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildAnimatedItem(
+                  delay: 350,
+                  child: Row(
+                    children: [
+                      const Spacer(),
+                      Expanded(
+                        flex: 2,
+                        child: _buildActionButton(
+                          context,
+                          "Cleanup",
+                          LucideIcons.trash2,
+                          Colors.red,
+                          _handleCleanup,
+                        ),
+                      ),
+                      const Spacer(),
                     ],
                   ),
                 ),
@@ -718,10 +719,64 @@ class _HomeViewState extends State<HomeView> {
           "${file.size} • ${_formatDate(file.modified)}",
           style: GoogleFonts.outfit(color: Colors.grey),
         ),
-        trailing: IconButton(
-          icon: const Icon(LucideIcons.share2, size: 20, color: Colors.grey),
-          tooltip: "Share",
-          onPressed: () => _shareFile(file),
+        trailing: PopupMenuButton<String>(
+          icon: const Icon(LucideIcons.moreVertical, size: 20, color: Colors.grey),
+          onSelected: (value) async {
+            if (value == 'share') {
+               _shareFile(file);
+            } else if (value == 'delete') {
+               // We need a delete function here. 
+               // _fileService.deleteFile(file.id) works but we need confirmation UI?
+               // For quick action, let's just delete or show dialog?
+               // Reuse logic if possible, or simple dialog.
+               final confirm = await showDialog<bool>(
+                   context: context, 
+                   builder: (context) => AlertDialog(
+                       title: const Text("Delete File?"),
+                       content: const Text("Are you sure?"),
+                       actions: [
+                           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+                           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text("Delete")),
+                       ]
+                   )
+               ) ?? false;
+               if (confirm) {
+                   await _fileService.deleteFile(file.id);
+                   if (mounted) setState(() {});
+               }
+            } else if (value == 'rename') {
+               // Implement Rename Dialog here (Duplicate logic from FileExplorerView)
+               String? newName;
+               await showDialog(
+                 context: context,
+                 builder: (context) {
+                     final controller = TextEditingController(text: file.name);
+                     return AlertDialog(
+                         title: Text("Rename ${file.isFolder ? 'Folder' : 'File'}"),
+                         content: TextField(
+                            controller: controller,
+                            decoration: const InputDecoration(hintText: "New Name"),
+                            autofocus: true,
+                            onSubmitted: (val) => Navigator.pop(context),
+                         ),
+                         actions: [
+                             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                             FilledButton(onPressed: () { newName = controller.text.trim(); Navigator.pop(context); }, child: const Text("Rename")),
+                         ],
+                     );
+                 }
+               );
+               if (newName != null && newName!.isNotEmpty && newName != file.name) {
+                   await _fileService.renameFile(file.id, newName!);
+                   if (mounted) setState(() {});
+               }
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'share', child: Text("Share")),
+            const PopupMenuItem(value: 'rename', child: Text("Rename")),
+            const PopupMenuItem(value: 'delete', child: Text("Delete")),
+          ],
         ),
       ),
     );

@@ -8,8 +8,18 @@ import 'features/splash/screens/splash_screen.dart'; // Keep for legacy refs if 
 import 'features/auth/screens/auth_check.dart';
 import 'features/notifications/services/notification_service.dart';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'core/constants.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Supabase
+  await Supabase.initialize(
+    url: AppConstants.supabaseUrl,
+    anonKey: AppConstants.supabaseAnonKey,
+  );
+
   try {
      await Firebase.initializeApp();
   } catch (e) {

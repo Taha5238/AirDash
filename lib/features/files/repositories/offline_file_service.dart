@@ -11,6 +11,7 @@ import 'package:path/path.dart' as path;
 import 'package:share_plus/share_plus.dart';
 import 'package:universal_html/html.dart' as html;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/file_item.dart';
 import '../models/file_type.dart';
@@ -77,19 +78,19 @@ class OfflineFileService {
     }
 
     try {
-      if (!kIsWeb) {
-        var status = await Permission.storage.request();
-        if (!status.isGranted) {
-           // Try manage external storage for Android 11+ if needed, or just warn
-           if (await Permission.manageExternalStorage.status.isDenied) {
-                // await Permission.manageExternalStorage.request(); // Optional: careful with store policy
-           }
-           if (status.isPermanentlyDenied) {
-              openAppSettings();
-              return null;
-           }
-        }
-      }
+      // if (!kIsWeb) {
+      //   var status = await Permission.storage.request();
+      //   if (!status.isGranted) {
+      //      // Try manage external storage for Android 11+ if needed, or just warn
+      //      if (await Permission.manageExternalStorage.status.isDenied) {
+      //           // await Permission.manageExternalStorage.request(); // Optional: careful with store policy
+      //      }
+      //      if (status.isPermanentlyDenied) {
+      //         openAppSettings();
+      //         return null;
+      //      }
+      //   }
+      // }
 
       print("DEBUG: Starting File Picker...");
         fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
@@ -140,7 +141,7 @@ class OfflineFileService {
          
          await Future.delayed(Duration(milliseconds: delayMillis));
 
-        final String id = DateTime.now().millisecondsSinceEpoch.toString();
+         final String id = const Uuid().v4();
         final FileItem newItem = FileItem(
           id: id,
           name: fileName,
@@ -214,7 +215,7 @@ class OfflineFileService {
             await file.writeAsBytes(bytes);
          }
 
-         final String id = DateTime.now().millisecondsSinceEpoch.toString();
+         final String id = const Uuid().v4();
          final FileItem newItem = FileItem(
            id: id,
            name: fileName,
@@ -265,7 +266,7 @@ class OfflineFileService {
     final String? userName = AuthService().currentUserName; // Get name
     if (currentUserUid == null) return null;
 
-    final String id = DateTime.now().millisecondsSinceEpoch.toString();
+    final String id = const Uuid().v4();
     // Default folder color
     final Color folderColor = Colors.blue; 
 
@@ -325,6 +326,54 @@ class OfflineFileService {
         });
       } catch (e) {
          print("Error renaming folder cloud: $e");
+      }
+    }
+  }
+
+  // Rename File
+  Future<void> renameFile(String id, String newName) async {
+    final data = _box.get(id);
+    if (data != null) {
+      final map = Map<String, dynamic>.from(data);
+      final item = FileItem.fromMap(map);
+      
+      if (item.userId != AuthService().currentUserUid) return;
+
+      // 1. Rename on Disk (if exists locally)
+      String? newPath = item.localPath;
+      if (!kIsWeb && item.localPath != null) {
+          final file = File(item.localPath!);
+          if (await file.exists()) {
+              final dir = path.dirname(item.localPath!);
+              final ext = path.extension(item.localPath!);
+              // Ensure newName has extension or keep old?
+              // Usually user types ID "Funny Cat", we keep ".png".
+              // Assuming newName is valid filename WITHOUT extension or WITH?
+              // Let's assume user provides full name or we handle it in UI. 
+              // Better: UI provides name without extension, we append extension.
+              // For now, let's assume UI does the right thing.
+              newPath = path.join(dir, newName);
+              try {
+                  await file.rename(newPath);
+              } catch (e) {
+                  print("Error renaming file on disk: $e");
+                  // If disk rename fails, maybe don't rename metadata? 
+                  // or continue? Let's continue but keep old path if fail.
+                  newPath = item.localPath;
+              }
+          }
+      }
+
+      final updatedItem = item.copyWith(name: newName, localPath: newPath);
+      await _box.put(id, updatedItem.toMap());
+
+      // 2. Sync to Firestore (Metadata)
+      try {
+        await FirebaseFirestore.instance.collection('files').doc(id).update({
+            'name': newName
+        });
+      } catch (e) {
+         print("Error renaming file cloud: $e");
       }
     }
   }
@@ -655,6 +704,47 @@ class OfflineFileService {
     }
   }
 
+  // Sync Community Files
+  Future<void> syncCommunityFiles(String communityId) async {
+      try {
+          final query = await FirebaseFirestore.instance
+              .collection('files')
+              .where('communityId', isEqualTo: communityId)
+              .get();
+          
+          for (var doc in query.docs) {
+              if (!_box.containsKey(doc.id)) {
+                  final data = doc.data();
+                  // Create Ghost File
+                   FileType type = FileType.other;
+                   if (data['type'] is int) {
+                      try {
+                          type = FileType.values[data['type']];
+                      } catch (_) {}
+                   }
+
+                   final newItem = FileItem(
+                      id: doc.id,
+                      name: data['name'] ?? 'Unknown',
+                      size: _formatSize(data['size'] ?? 0),
+                      modified: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+                      type: type,
+                      localPath: null, 
+                      synced: true,
+                      userId: data['userId'], 
+                      parentId: data['parentId'], 
+                      communityId: communityId,
+                      // TODO: Folder color?
+                   );
+                   await _box.put(doc.id, newItem.toMap());
+              }
+              // Optional: Update existing if metadata changed?
+          }
+      } catch (e) {
+          print("Error syncing community files: $e");
+      }
+  }
+
   // Save Received File (P2P)
   Future<FileItem?> saveReceivedFile(Uint8List bytes, String fileName, dynamic sizeArg, dynamic typeArg) async {
        final currentUserUid = AuthService().currentUserUid;
@@ -678,7 +768,7 @@ class OfflineFileService {
             await File(newPath).writeAsBytes(bytes);
          }
 
-         final String id = DateTime.now().millisecondsSinceEpoch.toString();
+         final String id = const Uuid().v4();
          // We should try to use the typeArg if strictly matching, but helper is safer
          final FileType type = _getTypeFromName(fileName);
 

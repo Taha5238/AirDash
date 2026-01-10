@@ -9,6 +9,11 @@ import '../models/community_message.dart';
 import '../services/community_service.dart';
 import '../../files/repositories/offline_file_service.dart';
 import '../../files/repositories/offline_file_service.dart';
+import '../../files/repositories/supabase_file_service.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import '../../files/models/file_type.dart';
+import '../../files/models/file_item.dart';
 // Note: We might need to duplicate/refactor FileList if FileListTile depends heavily on specific context
 
 class CommunityDetailView extends StatefulWidget {
@@ -23,6 +28,7 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
   late TabController _tabController;
   final CommunityService _communityService = CommunityService();
   final OfflineFileService _fileService = OfflineFileService();
+  final SupabaseFileService _supabaseService = SupabaseFileService();
   final AuthService _auth = AuthService();
 
   @override
@@ -31,6 +37,11 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
     _tabController = TabController(length: 4, vsync: this);
     // Auto-join if not member logic might be needed elsewhere, but assuming we entered from list where we handle access.
     // Actually, assume we are at least viewing it. 
+    
+    // Sync Files
+    _fileService.syncCommunityFiles(widget.communityId).then((_) {
+        if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -137,7 +148,20 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Uploading $name...')));
                         }
                      },
-                   );
+                   ).then((newItem) async {
+                      if (newItem != null) {
+                          // AUTO BACKUP TO SUPABASE FOR COMMUNITY SHARING
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Syncing to Cloud...")));
+                          try {
+                              await _supabaseService.backupFile(newItem);
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cloud Sync Complete!")));
+                          } catch (e) {
+                              print("Community Auto-Backup failed: $e");
+                              // Not critical for local save, but means others can't see it (ghost)
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Cloud Sync Failed: $e")));
+                          }
+                      }
+                   });
                  } catch (e) {
                    print("Upload Error: $e");
                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
@@ -170,7 +194,7 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
                         subtitle: Text(file.size),
                         trailing: IconButton(
                           icon: const Icon(LucideIcons.download),
-                          onPressed: () => _fileService.downloadFile(file),
+                          onPressed: () => _handleDownload(file),
                         ),
                       );
                    },
@@ -296,5 +320,45 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
            );
         },
       );
+  }
+  Future<void> _handleDownload(FileItem file) async {
+      // 1. If Local, use default
+      if (file.localPath != null || file.content != null) {
+          await _fileService.downloadFile(file);
+          return;
+      }
+
+      // 2. If Ghost, try cloud
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fetching from Cloud...")));
+      
+      try {
+          // Check if it exists in Supabase
+          final meta = await _supabaseService.getFileMetadata(file.id);
+          if (meta == null) {
+              throw Exception("File not found in cloud storage.");
+          }
+          
+          final path = meta['storage_path'];
+          final name = meta['file_name'];
+          
+          final bytes = await _supabaseService.downloadFileContent(path);
+          
+          // Save locally
+          final dir = await getApplicationDocumentsDirectory();
+          final localFile = File('${dir.path}/$name');
+          await localFile.writeAsBytes(bytes);
+
+          // Update Hive
+          final updatedItem = file.copyWith(localPath: localFile.path);
+          await Hive.box('filesBox').put(file.id, updatedItem.toMap());
+
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Downloaded!")));
+          
+          // Now open it
+          await _fileService.downloadFile(updatedItem);
+
+      } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download failed: $e")));
+      }
   }
 }

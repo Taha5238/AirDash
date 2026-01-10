@@ -6,6 +6,7 @@ import 'admin_analytics_view.dart';
 import 'admin_settings_view.dart';
 import 'user_management_view.dart';
 import 'admin_file_view.dart';
+import 'admin_backup_view.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -21,6 +22,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     const AdminAnalyticsView(),
     const UserManagementView(),
     const AdminFileView(),
+    const AdminBackupView(), // New Backup Tab
     const AdminSettingsView(),
   ];
 
@@ -55,6 +57,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
           NavigationDestination(
             icon: Icon(LucideIcons.files),
             label: 'All Files',
+          ),
+          NavigationDestination(
+            icon: Icon(LucideIcons.cloud),
+            label: 'Backups',
           ),
           NavigationDestination(
             icon: Icon(LucideIcons.settings),
