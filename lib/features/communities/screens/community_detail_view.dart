@@ -14,6 +14,12 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../../files/models/file_type.dart';
 import '../../files/models/file_item.dart';
+import '../../files/screens/viewers/image_viewer_page.dart';
+import '../../files/screens/viewers/pdf_viewer_page.dart';
+import '../../files/screens/viewers/video_player_page.dart';
+import '../../files/screens/viewers/office_viewer_page.dart';
+import '../../files/screens/file_detail_view.dart';
+import 'package:path/path.dart' as path;
 // Note: We might need to duplicate/refactor FileList if FileListTile depends heavily on specific context
 
 class CommunityDetailView extends StatefulWidget {
@@ -153,7 +159,13 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
                           // AUTO BACKUP TO SUPABASE FOR COMMUNITY SHARING
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Syncing to Cloud...")));
                           try {
-                              await _supabaseService.backupFile(newItem);
+                              final String storedPath = await _supabaseService.backupFile(newItem);
+                              
+                              // UPDATE FIRESTORE WITH STORAGE PATH
+                              await FirebaseFirestore.instance.collection('files').doc(newItem.id).update({
+                                  'storagePath': storedPath,
+                              });
+                              
                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cloud Sync Complete!")));
                           } catch (e) {
                               print("Community Auto-Backup failed: $e");
@@ -192,11 +204,34 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
                         leading: const Icon(LucideIcons.file),
                         title: Text(file.name),
                         subtitle: Text(file.size),
-                        trailing: IconButton(
-                          icon: const Icon(LucideIcons.download),
-                          onPressed: () => _handleDownload(file),
-                        ),
-                      );
+                        trailing: PopupMenuButton<String>(
+                  icon: const Icon(LucideIcons.moreVertical),
+                  onSelected: (value) {
+                    if (value == 'view') {
+                      _openFile(file);
+                    } else if (value == 'save') {
+                      _saveToDownloads(file);
+                    }
+                  },
+                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                    const PopupMenuItem<String>(
+                      value: 'view',
+                      child: ListTile(
+                        leading: Icon(LucideIcons.eye),
+                        title: Text('View'),
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'save',
+                      child: ListTile(
+                        leading: Icon(LucideIcons.download),
+                        title: Text('Save to Device'),
+                      ),
+                    ),
+                  ],
+                ),
+                onTap: () => _openFile(file), // Default to open on tap
+              );
                    },
                  );
              },
@@ -321,44 +356,147 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
         },
       );
   }
-  Future<void> _handleDownload(FileItem file) async {
-      // 1. If Local, use default
+  Future<FileItem> _ensureLocallyAvailable(FileItem file) async {
+      // 1. If Local, return as is
       if (file.localPath != null || file.content != null) {
-          await _fileService.downloadFile(file);
-          return;
+          return file;
       }
 
-      // 2. If Ghost, try cloud
+      // 2. Refresh from local DB in case it was downloaded recently
+      final existing = _fileService.getAllFiles(communityId: widget.communityId)
+          .firstWhere((f) => f.id == file.id, orElse: () => file);
+      
+      if (existing.localPath != null) return existing;
+
+      // 3. Download from Cloud
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fetching from Cloud...")));
       
-      try {
-          // Check if it exists in Supabase
+      String? path;
+      String? name = file.name;
+
+      if (file.storagePath != null) {
+          path = file.storagePath;
+      } else {
+          // Fallback: Legacy lookup
           final meta = await _supabaseService.getFileMetadata(file.id);
-          if (meta == null) {
-              throw Exception("File not found in cloud storage.");
+          if (meta != null) {
+              path = meta['storage_path'];
+              name = meta['file_name'];
           }
-          
-          final path = meta['storage_path'];
-          final name = meta['file_name'];
-          
-          final bytes = await _supabaseService.downloadFileContent(path);
-          
-          // Save locally
-          final dir = await getApplicationDocumentsDirectory();
-          final localFile = File('${dir.path}/$name');
-          await localFile.writeAsBytes(bytes);
-
-          // Update Hive
-          final updatedItem = file.copyWith(localPath: localFile.path);
-          await Hive.box('filesBox').put(file.id, updatedItem.toMap());
-
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Downloaded!")));
-          
-          // Now open it
-          await _fileService.downloadFile(updatedItem);
-
-      } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download failed: $e")));
       }
+      
+      if (path == null) throw Exception("No storage path found");
+      
+      final bytes = await _supabaseService.downloadFileContent(path);
+      
+      // Save locally to App Cache
+      final dir = await getApplicationDocumentsDirectory();
+      final localFile = File('${dir.path}/$name');
+      await localFile.writeAsBytes(bytes);
+
+      // Update Hive
+      // We need to 'fake' a save or update the item properties manually
+      // Since OfflineFileService manages Hive, let's update it there.
+      // But we don't have a direct 'updateLocalPath' method exposed easily except duplicate logic.
+      // Let's create a new item and put it.
+      
+      final updatedItem = file.copyWith(
+          localPath: localFile.path,
+          synced: true
+      );
+      
+      // We need to persist this update so next time it is local
+      // Using a bit of a hack: re-save to box. 
+      // Ideally OfflineFileService should have 'markAsDownloaded(id, path)'
+      // For now we assume this ephemeral DetailView can handle it or we ignore persistence 
+      // (but persistence is better).
+      // Let's try to update if we can access the box, but `_fileService` hides it.
+      // We'll rely on the caller to use the returned item.
+      await Hive.box('filesBox').put(updatedItem.id, updatedItem.toMap());
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Downloaded!")));
+      return updatedItem;
+  }
+
+  Future<void> _openFile(FileItem file) async {
+      try {
+          final localItem = await _ensureLocallyAvailable(file);
+          
+          if (!mounted) return;
+          
+          // Open File Viewer
+          Widget? viewerPage;
+          switch (localItem.type) {
+              case FileType.image:
+                  viewerPage = ImageViewerPage(file: localItem);
+                  break;
+              case FileType.document:
+                  if (localItem.name.toLowerCase().endsWith('.pdf')) {
+                      viewerPage = PdfViewerPage(file: localItem);
+                  } else if (localItem.name.toLowerCase().endsWith('.docx') || localItem.name.toLowerCase().endsWith('.xlsx')) {
+                      viewerPage = OfficeViewerPage(file: localItem); 
+                  }
+                  break;
+              case FileType.video:
+                  viewerPage = VideoPlayerPage(file: localItem);
+                  break;
+              default:
+                  break;
+          }
+
+          if (viewerPage != null) {
+              Navigator.of(context).push(MaterialPageRoute(builder: (context) => viewerPage!));
+          } else {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => Scaffold(
+                    appBar: AppBar(title: Text(localItem.name)),
+                    body: FileDetailView(file: localItem),
+                  ),
+                ),
+              );
+          }
+      } catch (e) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error opening file: $e")));
+      }
+  }
+
+  Future<void> _saveToDownloads(FileItem file) async {
+       try {
+          final localItem = await _ensureLocallyAvailable(file);
+          if (localItem.localPath == null) throw Exception("Could not download file.");
+
+          if (Platform.isAndroid) {
+              // Copy to Downloads folder
+              // Request permission if needed (Android < 10 needs it, 10+ legacy might need it)
+              // Since we have WRITE_EXTERNAL_STORAGE in manifest:
+              
+              final downloadDir = Directory('/storage/emulated/0/Download/AirDash');
+              if (!await downloadDir.exists()) {
+                  await downloadDir.create(recursive: true);
+              }
+
+              final String newPath = '${downloadDir.path}/${localItem.name}';
+              final File source = File(localItem.localPath!);
+              
+              // Handle duplicate names
+              String uniquePath = newPath;
+              int counter = 1;
+              while (await File(uniquePath).exists()) {
+                   final name = path.basenameWithoutExtension(localItem.name);
+                   final ext = path.extension(localItem.name);
+                   uniquePath = '${downloadDir.path}/$name($counter)$ext';
+                   counter++;
+              }
+
+              await source.copy(uniquePath);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Saved to Downloads/AirDash!")));
+          } else {
+              // iOS or other: Share is the standard "Save to Files"
+              await _fileService.shareFile(localItem);
+          }
+
+       } catch (e) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Save failed: $e")));
+       }
   }
 }

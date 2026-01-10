@@ -14,6 +14,7 @@ class FileItem {
   final FileType type;
   final Color? color; // For folders
   final String? previewUrl; // For images (mock asset path)
+  final String? storagePath; // Path in Cloud Storage (Supabase/Firebase)
   final String? localPath;
   final bool synced;
   final bool isStarred;
@@ -37,6 +38,7 @@ class FileItem {
     this.userId,
     this.parentId,
     this.communityId,
+    this.storagePath,
   });
 
   bool get isFolder => type == FileType.folder;
@@ -56,6 +58,7 @@ class FileItem {
     String? userId,
     String? parentId,
     String? communityId,
+    String? storagePath,
   }) {
     return FileItem(
       id: id ?? this.id,
@@ -72,6 +75,7 @@ class FileItem {
       userId: userId ?? this.userId,
       parentId: parentId ?? this.parentId,
       communityId: communityId ?? this.communityId,
+      storagePath: storagePath ?? this.storagePath,
     );
   }
 
@@ -90,6 +94,7 @@ class FileItem {
       'userId': userId,
       'parentId': parentId,
       'communityId': communityId,
+      'storagePath': storagePath,
     };
   }
 
@@ -108,6 +113,7 @@ class FileItem {
       userId: map['userId'],
       parentId: map['parentId'],
       communityId: map['communityId'],
+      storagePath: map['storagePath'],
     );
   }
 }

@@ -94,7 +94,7 @@ class _ReceiverProgressScreenState extends State<ReceiverProgressScreen> {
 
            await _webRTCService.acceptConnection(widget.transferId, widget.offer);
            
-           await _webRTCService.acceptConnection(widget.transferId, widget.offer);
+
            
            if (mounted) setState(() => _status = "Initializing connection...");
 

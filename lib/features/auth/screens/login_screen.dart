@@ -86,6 +86,30 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleGoogleLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      await _authService.signInWithGoogle();
+      if (mounted) {
+         final role = await _authService.getUserRole();
+         setState(() => _isLoading = false);
+         
+         if (mounted) {
+           if (role == 'admin') {
+             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const SplashScreen(nextScreen: AdminDashboard())));
+           } else {
+             Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const SplashScreen(nextScreen: DashboardScreen())));
+           }
+         }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google Sign In Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -138,8 +162,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
           // Right Side (Form)
           Expanded(
-            flex: 1,
-            child: Center(
+             flex: 1,
+             child: Center(
               child: SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.all(48.0),
@@ -250,6 +274,20 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: Text(
                               'OR',
                               style: TextStyle(color: Colors.grey[400]),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Google Login Button
+                          OutlinedButton.icon(
+                            onPressed: _isLoading ? null : _handleGoogleLogin,
+                            icon: const Icon(LucideIcons.chrome), 
+                            label: const Text('Sign in with Google'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 20),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 24),

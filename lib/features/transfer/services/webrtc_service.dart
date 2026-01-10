@@ -30,12 +30,18 @@ class WebRTCService {
   final Map<String, dynamic> _config = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
+      {'urls': 'stun:stun1.l.google.com:19302'},
+      {'urls': 'stun:stun2.l.google.com:19302'},
+      {'urls': 'stun:stun3.l.google.com:19302'},
+      {'urls': 'stun:stun4.l.google.com:19302'},
     ]
   };
 
   // --- SENDER: Start Connection ---
   Future<String> startConnection(String senderId, String receiverId, FileItem file) async {
+    print("WebRTC: Starting Connection (Sender)...");
     _peerConnection = await createPeerConnection(_config);
+    print("WebRTC: PeerConnection Created");
     
     // Create Data Channel
     RTCDataChannelInit dataChannelDict = RTCDataChannelInit()
@@ -43,36 +49,44 @@ class WebRTCService {
       ..ordered = true // Reliable delivery
       ..maxRetransmits = -1; // Unlimited
       
+    print("WebRTC: Creating Data Channel 'fileTransfer'...");
     _dataChannel = await _peerConnection!.createDataChannel("fileTransfer", dataChannelDict);
     _setupDataChannel(_dataChannel!);
 
     _peerConnection!.onIceConnectionState = (state) {
+        print("WebRTC: ICE State Change: $state");
         if (onConnectionState != null) onConnectionState!(state);
     };
 
     // Create Offer
+    print("WebRTC: Creating Offer...");
     RTCSessionDescription offer = await _peerConnection!.createOffer();
     await _peerConnection!.setLocalDescription(offer);
 
     // Send to Firestore
+    print("WebRTC: Sending Offer to Firestore...");
     final transferId = await _signaling.createOffer(
         senderId, 
         receiverId, 
         offer.toMap(), 
         file.toMap(), // Send metadata for preview
     );
+    print("WebRTC: Offer Sent. Transfer ID: $transferId");
 
     // Listen for ICE Candidates
     _peerConnection!.onIceCandidate = (candidate) {
+        print("WebRTC: Generated Local Candidate: ${candidate.candidate}");
         _signaling.addCandidate(transferId, candidate.toMap(), 'sender');
     };
     
     // Listen for Answer
+    print("WebRTC: Listening for Answer...");
     _signaling.getTransferStream(transferId).listen((snapshot) async {
         if (!snapshot.exists) return;
         final data = snapshot.data() as Map<String, dynamic>;
         
         if (data['status'] == 'accepted' && data['answer'] != null && _peerConnection!.signalingState != RTCSignalingState.RTCSignalingStateStable) {
+            print("WebRTC: Received Answer! Setting Remote Description...");
             final answer = RTCSessionDescription(data['answer']['sdp'], data['answer']['type']);
             await _peerConnection!.setRemoteDescription(answer);
         }
@@ -84,6 +98,7 @@ class WebRTCService {
              if (change.type == DocumentChangeType.added) {
                  final data = change.doc.data() as Map<String, dynamic>;
                  if (data['type'] == 'receiver') {
+                      print("WebRTC: Added Remote Candidate (from Receiver): ${data['candidate']['candidate']}");
                       final candidate = RTCIceCandidate(
                           data['candidate']['candidate'], 
                           data['candidate']['sdpMid'], 
@@ -100,30 +115,38 @@ class WebRTCService {
 
   // --- RECEIVER: Accept Connection ---
   Future<void> acceptConnection(String transferId, Map<String, dynamic> offerMap) async {
+      print("WebRTC: Accepting connection for $transferId");
       _peerConnection = await createPeerConnection(_config);
+      print("WebRTC: PeerConnection created");
       
       _peerConnection!.onDataChannel = (channel) {
+          print("WebRTC: DataChannel received: ${channel.label}");
           _dataChannel = channel;
           _setupDataChannel(channel);
       };
 
       _peerConnection!.onIceConnectionState = (state) {
+          print("WebRTC: ICE State Change: $state");
           if (onConnectionState != null) onConnectionState!(state);
       };
 
       _peerConnection!.onIceCandidate = (candidate) {
+           print("WebRTC: Generated Local Candidate: ${candidate.candidate}");
            _signaling.addCandidate(transferId, candidate.toMap(), 'receiver');
       };
 
       // Set Remote Description (Offer)
+      print("WebRTC: Setting Remote Description...");
       final offer = RTCSessionDescription(offerMap['sdp'], offerMap['type']);
       await _peerConnection!.setRemoteDescription(offer);
       
       // Create Answer
+      print("WebRTC: Creating Answer...");
       final answer = await _peerConnection!.createAnswer();
       await _peerConnection!.setLocalDescription(answer);
       
       // Send Answer
+      print("WebRTC: Sending Answer...");
       await _signaling.createAnswer(transferId, answer.toMap());
       
       // Listen for REMOTE candidates (from sender)
@@ -132,6 +155,7 @@ class WebRTCService {
              if (change.type == DocumentChangeType.added) {
                  final data = change.doc.data() as Map<String, dynamic>;
                  if (data['type'] == 'sender') {
+                      print("WebRTC: Added Remote Candidate: ${data['candidate']['candidate']}");
                       final candidate = RTCIceCandidate(
                           data['candidate']['candidate'], 
                           data['candidate']['sdpMid'], 

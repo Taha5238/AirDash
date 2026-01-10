@@ -734,6 +734,7 @@ class OfflineFileService {
                       userId: data['userId'], 
                       parentId: data['parentId'], 
                       communityId: communityId,
+                      storagePath: data['storagePath'], // SYNC KEY FIX
                       // TODO: Folder color?
                    );
                    await _box.put(doc.id, newItem.toMap());

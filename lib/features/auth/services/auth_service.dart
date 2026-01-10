@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
   // Singleton instance
@@ -120,6 +121,65 @@ class AuthService {
     } catch (e) {
       print("General Sign In Error: $e");
       throw Exception('Login Failed: $e');
+    }
+  }
+
+
+  // Sign In with Google
+  Future<void> signInWithGoogle() async {
+    try {
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+      if (googleUser == null) {
+        return; // User canceled the sign-in
+      }
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final User? user = userCredential.user;
+
+      if (user != null) {
+        // Check if user exists in Firestore
+        final DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
+
+        if (!userDoc.exists) {
+          // Create new user document
+          await _firestore.collection('users').doc(user.uid).set({
+            'uid': user.uid,
+            'name': user.displayName ?? 'Google User',
+            'email': user.email ?? '',
+            'phoneNumber': user.phoneNumber ?? '',
+            'role': 'user',
+            'accountStatus': 'active',
+            'isVerified': true, // Google accounts are implicitly verified
+            'photoUrl': user.photoURL,
+            'plan': 'free',
+            'storageLimit': 5368709120, // 5GB
+            'storageUsed': 0,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+             // Check blocked status
+             final data = userDoc.data() as Map<String, dynamic>;
+             if (data['accountStatus'] == 'blocked') {
+                await signOut();
+                throw FirebaseAuthException(code: 'user-blocked', message: 'Your account has been blocked.');
+             }
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      print("Google Sign In Error: ${e.message}");
+      if (e.code == 'user-blocked') rethrow;
+      throw Exception(e.message);
+    } catch (e) {
+      print("General Google Sign In Error: $e");
+      throw Exception('Google Login Failed: $e');
     }
   }
 

@@ -45,6 +45,7 @@ dependencies:
   firebase_storage: ^12.3.6
   image_picker: ^1.1.2
   permission_handler: ^12.0.1
+  google_sign_in: ^6.2.1
 
   # Offline Storage
   hive: ^2.2.3
@@ -78,7 +79,20 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
   build_runner: ^2.4.8
-  hive_generator: ^2.0.1
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/icon.png"
+
+flutter_native_splash:
+  color: "#ffffff"
+  image: "assets/icon/icon.png"
+  android_12:
+    image: "assets/icon/icon.png"
+    color: "#ffffff"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

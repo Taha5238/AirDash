@@ -32,7 +32,7 @@ class SupabaseFileService {
   /// Uploads a file to Supabase Storage and saves metadata to Firestore/Supabase DB.
   /// Note: The original requirement mentioned Supabase, but the app uses Firestore for metadata in other places.
   /// I will use Supabase for both Storage and DB for this specific "Backup" feature as requested implicitly by the Supabase context.
-  Future<void> backupFile(FileItem file) async {
+  Future<String> backupFile(FileItem file) async {
     // 1. Check if we have the file data
     File? localFile;
     if (file.localPath != null) {
@@ -84,6 +84,8 @@ class SupabaseFileService {
       'storage_path': path, 
       'created_at': DateTime.now().toIso8601String(),
     });
+    
+    return path;
   }
 
 
