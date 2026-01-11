@@ -132,48 +132,6 @@ class _HomeViewState extends State<HomeView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          "Dashboard",
-          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 24),
-        ),
-        actions: [
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(LucideIcons.bell), 
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationScreen()));
-                }
-              ),
-              // Unread Badge
-              ValueListenableBuilder(
-                valueListenable: Hive.box<NotificationModel>('notificationsBox').listenable(),
-                builder: (_, Box<NotificationModel> box, __) {
-                   final unread = box.values.where((n) => !n.isRead).length;
-                   if (unread == 0) return const SizedBox.shrink();
-                   return Positioned(
-                     right: 8,
-                     top: 8,
-                     child: Container(
-                       padding: const EdgeInsets.all(4),
-                       decoration: const BoxDecoration(
-                         color: Colors.red,
-                         shape: BoxShape.circle,
-                       ),
-                       child: Text(
-                         unread > 9 ? '9+' : unread.toString(),
-                         style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                       ),
-                     ),
-                   );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
-        ],
-      ),
       body: ValueListenableBuilder(
         valueListenable: Hive.box('filesBox').listenable(),
         builder: (context, box, _) {

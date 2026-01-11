@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:google_fonts/google_fonts.dart'; // Added
 import '../../../core/utils/responsive_layout.dart';
 import '../../files/screens/file_explorer_view.dart';
 import '../../profile/screens/profile_screen.dart';
 import 'dart:async';
+import 'dart:convert'; // Added for base64Decode
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // Added
 import '../../notifications/services/notification_service.dart';
+import '../../notifications/models/notification_model.dart'; // Added
+import '../../notifications/screens/notification_screen.dart'; // Added
 import 'home_view.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -80,67 +85,150 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const ProfileScreen(),
   ];
 
+  String _getPageTitle() {
+      switch (_selectedIndex) {
+          case 0: return 'Dashboard';
+          case 1: return 'Your Files';
+          case 2: return 'Profile';
+          default: return 'AirDash';
+      }
+  }
+
+  List<Widget> _buildActions() {
+      if (_selectedIndex == 0) { // Home: Show Notification Bell
+          return [
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(LucideIcons.bell), 
+                    onPressed: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationScreen()));
+                    }
+                  ),
+                  // Unread Badge
+                  ValueListenableBuilder(
+                    valueListenable: Hive.box<NotificationModel>('notificationsBox').listenable(),
+                    builder: (_, Box<NotificationModel> box, __) {
+                       final unread = box.values.where((n) => !n.isRead).length;
+                       if (unread == 0) return const SizedBox.shrink();
+                       return Positioned(
+                         right: 8,
+                         top: 8,
+                         child: Container(
+                           padding: const EdgeInsets.all(4),
+                           decoration: const BoxDecoration(
+                             color: Colors.red,
+                             shape: BoxShape.circle,
+                           ),
+                           child: Text(
+                             unread > 9 ? '9+' : unread.toString(),
+                             style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                           ),
+                         ),
+                       );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
+          ];
+      }
+      return [];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool isDesktop = ResponsiveLayout.isDesktop(context);
-    final bool isTablet = ResponsiveLayout.isTablet(context);
-    final bool showRail = isDesktop || isTablet;
-
     return Scaffold(
-      body: Row(
-        children: [
-          if (showRail)
-            NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: (int index) {
-                setState(() {
-                  _selectedIndex = index;
-                });
-              },
-              labelType: NavigationRailLabelType.all,
-              destinations: const [
-                NavigationRailDestination(
-                  icon: Icon(LucideIcons.layoutDashboard),
-                  label: Text('Home'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(LucideIcons.folder),
-                  label: Text('Files'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(LucideIcons.user),
-                  label: Text('Profile'),
-                ),
-              ],
-            ),
-          if (showRail) const VerticalDivider(thickness: 1, width: 1),
-          Expanded(child: _pages[_selectedIndex]),
-        ],
+      appBar: AppBar(
+        title: Text(
+          _getPageTitle(),
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+        ),
+        actions: _buildActions(),
       ),
-      bottomNavigationBar: (!showRail)
-          ? NavigationBar(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: (int index) {
-                setState(() {
-                  _selectedIndex = index;
-                });
-              },
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(LucideIcons.layoutDashboard),
-                  label: 'Home',
-                ),
-                NavigationDestination(
-                  icon: Icon(LucideIcons.folder),
-                  label: 'Files',
-                ),
-                NavigationDestination(
-                  icon: Icon(LucideIcons.user),
-                  label: 'Profile',
-                ),
-              ],
-            )
-          : null,
+      drawer: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser?.uid).snapshots(),
+        builder: (context, snapshot) {
+            String displayName = FirebaseAuth.instance.currentUser?.displayName ?? "User";
+            String email = FirebaseAuth.instance.currentUser?.email ?? "";
+            String? photoUrl = FirebaseAuth.instance.currentUser?.photoURL;
+            String? photoBase64;
+
+            if (snapshot.hasData && snapshot.data != null && snapshot.data!.exists) {
+                final data = snapshot.data!.data() as Map<String, dynamic>;
+                displayName = data['name'] ?? displayName;
+                // email = data['email'] ?? email;
+                photoUrl = data['photoUrl'] ?? photoUrl;
+                photoBase64 = data['photoBase64'];
+            }
+
+            ImageProvider? backgroundImage;
+            if (photoBase64 != null) {
+                try {
+                    backgroundImage = MemoryImage(base64Decode(photoBase64));
+                } catch (_) {}
+            } else if (photoUrl != null) {
+                backgroundImage = NetworkImage(photoUrl);
+            }
+
+            return Drawer(
+              child: Column(
+                children: [
+                   UserAccountsDrawerHeader(
+                     accountName: Text(displayName),
+                     accountEmail: Text(email),
+                     currentAccountPicture: CircleAvatar(
+                       backgroundColor: Colors.white,
+                       backgroundImage: backgroundImage,
+                       child: backgroundImage == null ? const Icon(LucideIcons.user, size: 30) : null,
+                     ),
+                     decoration: BoxDecoration(
+                         color: Theme.of(context).primaryColor,
+                     ),
+                   ),
+                   ListTile(
+                     leading: const Icon(LucideIcons.layoutDashboard),
+                     title: const Text("Home"),
+                     selected: _selectedIndex == 0,
+                     onTap: () {
+                       setState(() => _selectedIndex = 0);
+                       Navigator.pop(context);
+                     },
+                   ),
+                   ListTile(
+                     leading: const Icon(LucideIcons.folder),
+                     title: const Text("Files"),
+                     selected: _selectedIndex == 1,
+                     onTap: () {
+                       setState(() => _selectedIndex = 1);
+                       Navigator.pop(context);
+                     },
+                   ),
+                   ListTile(
+                     leading: const Icon(LucideIcons.user),
+                     title: const Text("Profile"),
+                     selected: _selectedIndex == 2,
+                     onTap: () {
+                        setState(() => _selectedIndex = 2);
+                        Navigator.pop(context);
+                     },
+                   ),
+                   const Spacer(),
+                   const Divider(),
+                   ListTile(
+                     leading: const Icon(LucideIcons.logOut, color: Colors.red),
+                     title: const Text("Logout", style: TextStyle(color: Colors.red)),
+                     onTap: () async {
+                         await FirebaseAuth.instance.signOut();
+                     },
+                   ),
+                   const SizedBox(height: 16),
+                ],
+              ),
+            );
+        }
+      ),
+      body: _pages[_selectedIndex],
     );
   }
 }

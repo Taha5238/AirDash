@@ -51,11 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: Text('Settings', style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold)),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-      ),
+      // AppBar removed for Dashboard centralization
       body: Stack(
         children: [
           SingleChildScrollView(

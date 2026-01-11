@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:google_fonts/google_fonts.dart'; // Added
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/utils/responsive_layout.dart';
@@ -609,168 +610,257 @@ class _FileListView extends StatelessWidget {
     final fileCount = files.where((f) => !f.isFolder).length;
     final folderCount = files.where((f) => f.isFolder).length;
 
-    return Column(
-      children: [
-        // Toolbar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
-          ),
-          child: Row(
-            children: [
-              if (currentFolderId != null)
-                IconButton(
-                  icon: const Icon(LucideIcons.arrowLeft),
-                  onPressed: onNavigateUp,
-                  tooltip: "Back",
-                ),
-              Expanded(
-                child: TextField(
-                  decoration: const InputDecoration(
-                    hintText: "Search files...",
-                    prefixIcon: Icon(LucideIcons.search, size: 20),
-                    border: InputBorder.none,
-                    isDense: true,
-                  ),
-                  onChanged: onSearch,
-                ),
-              ),
-              const SizedBox(width: 8),
-               // Filter Dropdown
-              PopupMenuButton<FileType?>(
-                icon: const Icon(LucideIcons.filter, size: 20),
-                tooltip: "Filter",
-                onSelected: onFilter,
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: null, child: Text("All Files")),
-                  ...FileType.values.map(
-                    (type) => PopupMenuItem(
-                      value: type,
-                      child: Text(type.toString().split('.').last.toUpperCase()),
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+            showModalBottomSheet(
+                context: context,
+                backgroundColor: Theme.of(context).cardColor,
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+                builder: (context) => SafeArea(
+                    child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                                Text("Add New", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 10),
+                                ListTile(
+                                    leading: const Icon(LucideIcons.uploadCloud, color: Colors.blue),
+                                    title: const Text("Upload File"),
+                                    onTap: () { Navigator.pop(context); onUpload(); },
+                                ),
+                                ListTile(
+                                    leading: const Icon(LucideIcons.folderPlus, color: Colors.amber),
+                                    title: const Text("Create Folder"),
+                                    onTap: () { Navigator.pop(context); onCreateFolder(); },
+                                ),
+                                ListTile(
+                                    leading: const Icon(LucideIcons.downloadCloud, color: Colors.purple),
+                                    title: const Text("Restore from Cloud"),
+                                    onTap: () { Navigator.pop(context); onRestore(); },
+                                ),
+                            ],
+                        ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: const Icon(LucideIcons.folderPlus, size: 20),
-                tooltip: "New Folder",
-                onPressed: onCreateFolder,
-              ),
-              IconButton(
-                 icon: const Icon(LucideIcons.uploadCloud, size: 20),
-                 tooltip: "Upload",
-                 onPressed: onUpload,
-              ),
-              IconButton(
-                 icon: const Icon(LucideIcons.download, size: 20),
-                 tooltip: "Restore from Cloud",
-                 onPressed: onRestore,
-              ),
-            ],
-          ),
-        ),
-
-        // File List
-        Expanded(
-          child: files.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(LucideIcons.folderOpen, size: 48, color: Theme.of(context).disabledColor),
-                      const SizedBox(height: 16),
-                      Text("No files found", style: TextStyle(color: Theme.of(context).disabledColor)),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: files.length,
-                  itemBuilder: (context, index) {
-                    final file = files[index];
-                    final isSelected = selectedFile?.id == file.id;
-
-                    return ListTile(
-                      key: ValueKey(file.id),
-                      selected: isSelected,
-                      selectedTileColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                      leading: Icon(
-                        file.isFolder ? LucideIcons.folder : _getIconForType(file.type),
-                        color: file.isFolder ? Colors.amber : Theme.of(context).colorScheme.primary,
-                      ),
-                      title: Text(
-                        file.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: isSelected ? const TextStyle(fontWeight: FontWeight.bold) : null,
-                      ),
-                      subtitle: Text(
-                        "${file.size} • ${_formatDate(file.modified)}",
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                              icon: const Icon(LucideIcons.share2, size: 20),
-                              tooltip: "Share",
-                              onPressed: () => onShare(file),
-                          ),
-                          PopupMenuButton<String>(
-                            icon: const Icon(LucideIcons.moreVertical, size: 20),
-                            onSelected: (value) {
-                              if (value == 'delete') {
-                                onDelete(file);
-                              } else if (value == 'rename') {
-                                 onRename(file);
-                              } else if (value == 'move') {
-                                  onMove(file);
-                              } else if (value == 'transfer') {
-                                  onSendToUser(file);
-                              } else if (value == 'backup') {
-                                  onBackup(file);
-                              }
-                            },
-                            itemBuilder: (BuildContext context) {
-                              return {'Delete'}.map((String choice) {
-                                return PopupMenuItem<String>(
-                                  value: choice.toLowerCase(),
-                                  child: Text(choice),
-                                );
-                              }).toList()
-                              ..addAll([
-                                  const PopupMenuItem(value: 'move', child: Text("Move to...")),
-                                  const PopupMenuItem(value: 'rename', child: Text("Rename")),
-                                  if (!file.isFolder) const PopupMenuItem(value: 'transfer', child: Text("Send to User (P2P)")),
-                                  if (!file.isFolder) const PopupMenuItem(value: 'backup', child: Text("Backup to Cloud")),
-                              ]);
-                            },
-                          ),
-                        ],
-                      ),
-                      onTap: () => onFileTap(file),
-                    );
-                  },
                 ),
-        ),
-        
-        // Footer Status
-        Container(
-          padding: const EdgeInsets.all(8),
-          color: Theme.of(context).cardColor,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-               Text(
-                 "$folderCount folders, $fileCount files",
-                 style: Theme.of(context).textTheme.bodySmall,
-               ),
-            ],
+            );
+        },
+        label: const Text("Add New"),
+        icon: const Icon(LucideIcons.plus),
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
+      ),
+      body: Column(
+        children: [
+          // Modern Search Bar
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+               children: [
+                 if (currentFolderId != null)
+                   Padding(
+                     padding: const EdgeInsets.only(right: 8),
+                     child: IconButton(
+                       icon: const Icon(LucideIcons.arrowLeft),
+                       onPressed: onNavigateUp,
+                       style: IconButton.styleFrom(
+                         backgroundColor: Theme.of(context).cardColor,
+                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                       ),
+                     ),
+                   ),
+                 Expanded(
+                   child: Container(
+                     padding: const EdgeInsets.symmetric(horizontal: 16),
+                     height: 50,
+                     decoration: BoxDecoration(
+                       color: Theme.of(context).cardColor,
+                       borderRadius: BorderRadius.circular(25),
+                       boxShadow: [
+                         BoxShadow(
+                           color: Colors.black.withOpacity(0.05),
+                           blurRadius: 10,
+                           offset: const Offset(0, 4),
+                         ),
+                       ],
+                     ),
+                     child: Row(
+                       children: [
+                         Icon(LucideIcons.search, color: Colors.grey[400]),
+                         const SizedBox(width: 12),
+                         Expanded(
+                           child: TextField(
+                             decoration: const InputDecoration(
+                               hintText: "Search your files...",
+                               border: InputBorder.none,
+                               isDense: true,
+                             ),
+                             onChanged: onSearch,
+                           ),
+                         ),
+                         // Filter Icon inside Search Pill
+                         PopupMenuButton<FileType?>(
+                           icon: Icon(LucideIcons.slidersHorizontal, color: Colors.grey[600], size: 20),
+                           tooltip: "Filter",
+                           onSelected: onFilter,
+                           itemBuilder: (context) => [
+                             const PopupMenuItem(value: null, child: Text("All Files")),
+                             ...FileType.values.map(
+                               (type) => PopupMenuItem(
+                                 value: type,
+                                 child: Text(type.toString().split('.').last.toUpperCase()),
+                               ),
+                             ),
+                           ],
+                         ),
+                       ],
+                     ),
+                   ),
+                 ),
+               ],
+            ),
           ),
-        ),
-      ],
+
+          // File List
+          Expanded(
+            child: files.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(30),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).primaryColor.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(LucideIcons.folderOpen, size: 60, color: Theme.of(context).primaryColor),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          "No files found",
+                          style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Upload a file or create a folder to get started",
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 24),
+                        OutlinedButton.icon(
+                          onPressed: onUpload,
+                          icon: const Icon(LucideIcons.uploadCloud),
+                          label: const Text("Upload First File"),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: files.length,
+                    itemBuilder: (context, index) {
+                      final file = files[index];
+                      final isSelected = selectedFile?.id == file.id;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardColor,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            )
+                          ],
+                          border: isSelected ? Border.all(color: Theme.of(context).primaryColor, width: 2) : null,
+                        ),
+                        child: ListTile(
+                          key: ValueKey(file.id),
+                          selected: isSelected,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: file.isFolder ? Colors.amber.withOpacity(0.1) : Theme.of(context).primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              file.isFolder ? LucideIcons.folder : _getIconForType(file.type),
+                              color: file.isFolder ? Colors.amber : Theme.of(context).primaryColor,
+                            ),
+                          ),
+                          title: Text(
+                            file.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            "${file.size} • ${_formatDate(file.modified)}",
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                  icon: const Icon(LucideIcons.share2, size: 20, color: Colors.grey),
+                                  tooltip: "Share",
+                                  onPressed: () => onShare(file),
+                              ),
+                              PopupMenuButton<String>(
+                                icon: const Icon(LucideIcons.moreVertical, size: 20, color: Colors.grey),
+                                onSelected: (value) {
+                                  if (value == 'delete') {
+                                    onDelete(file);
+                                  } else if (value == 'rename') {
+                                     onRename(file);
+                                  } else if (value == 'move') {
+                                      onMove(file);
+                                  } else if (value == 'transfer') {
+                                      onSendToUser(file);
+                                  } else if (value == 'backup') {
+                                      onBackup(file);
+                                  }
+                                },
+                                itemBuilder: (BuildContext context) {
+                                  return {'Delete'}.map((String choice) {
+                                    return PopupMenuItem<String>(
+                                      value: choice.toLowerCase(),
+                                      child: Text(choice),
+                                    );
+                                  }).toList()
+                                  ..addAll([
+                                      const PopupMenuItem(value: 'move', child: Text("Move to...")),
+                                      const PopupMenuItem(value: 'rename', child: Text("Rename")),
+                                      if (!file.isFolder) const PopupMenuItem(value: 'transfer', child: Text("Send to User (P2P)")),
+                                      if (!file.isFolder) const PopupMenuItem(value: 'backup', child: Text("Backup to Cloud")),
+                                  ]);
+                                },
+                              ),
+                            ],
+                          ),
+                          onTap: () => onFileTap(file),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          
+          // Folder/File Count Status
+          if (files.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                "$folderCount folders, $fileCount files",
+                style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
