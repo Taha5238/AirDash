@@ -36,13 +36,25 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
   final SupabaseFileService _supabaseService = SupabaseFileService();
   final AuthService _auth = AuthService();
 
+  bool _isGlobalAdmin = false;
+
   @override
   void initState() {
     super.initState();
+    _checkGlobalAdmin();
     // Sync Files
     _fileService.syncCommunityFiles(widget.communityId).then((_) {
         if (mounted) setState(() {});
     });
+  }
+
+  Future<void> _checkGlobalAdmin() async {
+      final role = await _auth.getUserRole();
+      if (mounted) {
+          setState(() {
+              _isGlobalAdmin = role == 'admin';
+          });
+      }
   }
 
   @override
@@ -53,18 +65,32 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
         if (!snapshot.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));
         
         // Handle deleted community
-        if (!snapshot.data!.exists) return const Scaffold(body: Center(child: Text("Community not found")));
+        if (!snapshot.data!.exists) {
+            return Scaffold(
+                appBar: AppBar(title: const Text("Community")),
+                body: const Center(child: Text("Community not found (Deleted)")),
+            );
+        }
 
         final community = Community.fromMap(snapshot.data!.data() as Map<String, dynamic>, widget.communityId);
         final currentUser = _auth.currentUserUid;
         final isMember = community.isMember(currentUser!);
-        final isAdmin = community.isAdmin(currentUser);
-        final canEdit = isAdmin || community.isEditor(currentUser);
+        final isCommunityAdmin = community.isAdmin(currentUser);
+        final canEdit = isCommunityAdmin || community.isEditor(currentUser) || _isGlobalAdmin;
+        
+        // Super Admin Access
+        final hasAccess = isMember || isCommunityAdmin || _isGlobalAdmin;
+
+        // Chat Access: STRICTLY for members only. System Admins cannot spy on chat unless they join.
+        final showChat = isMember; 
+
+        // Admin Controls (Requests, Delete, Kick)
+        final showAdminControls = isCommunityAdmin || _isGlobalAdmin;
 
         final isPending = community.pendingMemberIds.contains(currentUser);
 
-        // Access Control: Block ALL content if not a member
-        if (!isMember && !isAdmin) {
+        // Access Control: Block ALL content if not a member AND not global admin
+        if (!hasAccess) {
              return Scaffold(
                 appBar: AppBar(title: Text(community.name)),
                 body: Center(
@@ -130,24 +156,25 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
         }
 
         // Calculate tab count dynamically
-        final int tabCount = isAdmin ? 4 : 3;
+        // Files (Always) + Chat (If Member) + Members (Always) + Requests (If Admin)
+        final List<Widget> tabs = [
+           const Tab(text: 'Files'),
+           if (showChat) const Tab(text: 'Chat'),
+           const Tab(text: 'Members'),
+           if (isCommunityAdmin) const Tab(text: 'Requests'),
+        ];
 
         return DefaultTabController(
-          length: tabCount,
+          length: tabs.length,
           child: Scaffold(
             appBar: AppBar(
               title: Text(community.name),
               bottom: TabBar(
                 isScrollable: true,
-                tabs: [
-                  const Tab(text: 'Files'),
-                  const Tab(text: 'Chat'),
-                  const Tab(text: 'Members'),
-                  if (isAdmin) const Tab(text: 'Requests'),
-                ],
+                tabs: tabs,
               ),
               actions: [
-                if (isAdmin)
+                if (showAdminControls)
                    PopupMenuButton<String>(
                      onSelected: (value) {
                        if (value == 'delete') {
@@ -175,13 +202,13 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
                 _buildFilesTab(community, canEdit),
 
                 // 2. Chat Tab
-                _buildChatTab(community, isMember),
+                if (showChat) _buildChatTab(community, isMember),
 
                 // 3. Members Tab
-                _buildMembersTab(community, isAdmin),
+                _buildMembersTab(community, showAdminControls, isCommunityAdmin),
 
                 // 4. Requests Tab (Admin Only)
-                if (isAdmin) _buildRequestsTab(community),
+                if (isCommunityAdmin) _buildRequestsTab(community),
               ],
             ),
           ),
@@ -359,7 +386,7 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
   }
 
   // --- Members Tab ---
-  Widget _buildMembersTab(Community community, bool isAdmin) {
+  Widget _buildMembersTab(Community community, bool showMenu, bool canChangeRoles) {
       final members = community.memberRoles.entries.toList();
       return ListView.builder(
         itemCount: members.length,
@@ -380,17 +407,28 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
                  return ListTile(
                    title: Text(uid == _auth.currentUserUid ? '$name (You)' : name),
                    subtitle: Text(role.toUpperCase()),
-                   trailing: isAdmin && uid != _auth.currentUserUid ? PopupMenuButton<String>(
+                   trailing: showMenu && uid != _auth.currentUserUid ? PopupMenuButton<String>(
                      onSelected: (value) {
-                        if (value == 'kick') { // Not implemented yet
+                        if (value == 'kick') {
+                           _communityService.removeMember(community.id, uid);
                         } else {
                            _communityService.updateMemberRole(community.id, uid, value);
                         }
                      },
                      itemBuilder: (context) => [
-                       const PopupMenuItem(value: 'viewer', child: Text('Make Viewer')),
-                       const PopupMenuItem(value: 'editor', child: Text('Make Editor')),
-                       const PopupMenuItem(value: 'admin', child: Text('Make Admin')),
+                       if (canChangeRoles) ...[
+                         const PopupMenuItem(value: 'viewer', child: Text('Make Viewer')),
+                         const PopupMenuItem(value: 'editor', child: Text('Make Editor')),
+                         const PopupMenuItem(value: 'admin', child: Text('Make Admin')),
+                         const PopupMenuDivider(),
+                       ],
+                       const PopupMenuItem(value: 'kick', child: Row(
+                         children: [
+                           Icon(LucideIcons.userX, color: Colors.red, size: 18),
+                           SizedBox(width: 8),
+                           Text('Remove Member', style: TextStyle(color: Colors.red)),
+                         ],
+                       )),
                      ],
                    ) : null,
                  );
@@ -455,16 +493,21 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
     );
   }
   Future<FileItem> _ensureLocallyAvailable(FileItem file) async {
-      // 1. If Local, return as is
-      if (file.localPath != null || file.content != null) {
-          return file;
+      // 1. If Local AND Exists, return as is
+      if (file.localPath != null) {
+         final f = File(file.localPath!);
+         if (await f.exists()) return file;
       }
+      if (file.content != null) return file;
 
       // 2. Refresh from local DB in case it was downloaded recently
       final existing = _fileService.getAllFiles(communityId: widget.communityId)
           .firstWhere((f) => f.id == file.id, orElse: () => file);
       
-      if (existing.localPath != null) return existing;
+      if (existing.localPath != null) {
+          final f = File(existing.localPath!);
+          if (await f.exists()) return existing;
+      }
 
       // 3. Download from Cloud
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fetching from Cloud...")));

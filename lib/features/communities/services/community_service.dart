@@ -139,6 +139,13 @@ class CommunityService {
     await _firestore.collection('communities').doc(communityId).delete();
   }
 
+  // Remove Member (Kick)
+  Future<void> removeMember(String communityId, String userId) async {
+    await _firestore.collection('communities').doc(communityId).update({
+      'memberRoles.$userId': FieldValue.delete(), 
+    });
+  }
+
   Stream<List<CommunityMessage>> getMessages(String communityId) {
     return _firestore.collection('communities')
         .doc(communityId)
