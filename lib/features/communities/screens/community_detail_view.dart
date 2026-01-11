@@ -30,8 +30,7 @@ class CommunityDetailView extends StatefulWidget {
   State<CommunityDetailView> createState() => _CommunityDetailViewState();
 }
 
-class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _CommunityDetailViewState extends State<CommunityDetailView> {
   final CommunityService _communityService = CommunityService();
   final OfflineFileService _fileService = OfflineFileService();
   final SupabaseFileService _supabaseService = SupabaseFileService();
@@ -40,10 +39,6 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-    // Auto-join if not member logic might be needed elsewhere, but assuming we entered from list where we handle access.
-    // Actually, assume we are at least viewing it. 
-    
     // Sync Files
     _fileService.syncCommunityFiles(widget.communityId).then((_) {
         if (mounted) setState(() {});
@@ -68,69 +63,127 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
 
         final isPending = community.pendingMemberIds.contains(currentUser);
 
-        // Access Control
-        if (!community.isPublic && !isMember && !isAdmin) {
+        // Access Control: Block ALL content if not a member
+        if (!isMember && !isAdmin) {
              return Scaffold(
                 appBar: AppBar(title: Text(community.name)),
                 body: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(LucideIcons.lock, size: 64, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      Text("This is a Private Community", style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 8),
-                      const Text("You need to be a member to see content."),
-                      const SizedBox(height: 24),
-                      if (isPending)
-                        const Chip(label: Text("Request Sent"), avatar: Icon(Icons.hourglass_empty))
-                      else
-                        FilledButton(
-                          onPressed: () => _communityService.joinCommunity(widget.communityId),
-                          child: const Text("Request to Join"),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          community.isPublic ? LucideIcons.users : LucideIcons.lock, 
+                          size: 80, 
+                          color: Colors.blue.withOpacity(0.5)
                         ),
-                    ],
+                        const SizedBox(height: 24),
+                        Text(
+                          community.name, 
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          community.description,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.grey[600]),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 32),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(community.isPublic ? LucideIcons.globe : LucideIcons.shield, size: 16, color: Colors.grey),
+                              const SizedBox(width: 8),
+                              Text(community.isPublic ? "Public Community" : "Private Community"),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        if (isPending)
+                          const Chip(
+                            label: Text("Request Sent"), 
+                            avatar: Icon(Icons.watch_later_outlined, size: 16),
+                            backgroundColor: Colors.amberAccent,
+                          )
+                        else
+                          FilledButton.icon(
+                            onPressed: () => _communityService.joinCommunity(widget.communityId),
+                            icon: Icon(community.isPublic ? LucideIcons.logIn : LucideIcons.send),
+                            label: Text(community.isPublic ? "Join Community" : "Request to Join"),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
              );
         }
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(community.name),
-            bottom: TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              tabs: [
-                const Tab(text: 'Files'),
-                const Tab(text: 'Chat'),
-                const Tab(text: 'Members'),
-                if (isAdmin) const Tab(text: 'Requests'),
+        // Calculate tab count dynamically
+        final int tabCount = isAdmin ? 4 : 3;
+
+        return DefaultTabController(
+          length: tabCount,
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(community.name),
+              bottom: TabBar(
+                isScrollable: true,
+                tabs: [
+                  const Tab(text: 'Files'),
+                  const Tab(text: 'Chat'),
+                  const Tab(text: 'Members'),
+                  if (isAdmin) const Tab(text: 'Requests'),
+                ],
+              ),
+              actions: [
+                if (isAdmin)
+                   PopupMenuButton<String>(
+                     onSelected: (value) {
+                       if (value == 'delete') {
+                          _showDeleteConfirmation(context, community.id);
+                       }
+                     },
+                     itemBuilder: (context) => [
+                       const PopupMenuItem(
+                         value: 'delete', 
+                         child: Row(
+                           children: [
+                             Icon(LucideIcons.trash2, color: Colors.red, size: 20),
+                             SizedBox(width: 8),
+                             Text('Delete Community', style: TextStyle(color: Colors.red)),
+                           ],
+                         ),
+                       ),
+                     ],
+                   ),
               ],
             ),
-            actions: [
-                if (!isMember && !isPending) 
-                   TextButton(
-                     onPressed: () => _communityService.joinCommunity(widget.communityId),
-                     child: const Text('Join', style: TextStyle(color: Colors.white)),
-                   )
-            ],
-          ),
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              // 1. Files Tab
-              _buildFilesTab(community, canEdit),
+            body: TabBarView(
+              children: [
+                // 1. Files Tab
+                _buildFilesTab(community, canEdit),
 
-              // 2. Chat Tab
-              _buildChatTab(community, isMember),
+                // 2. Chat Tab
+                _buildChatTab(community, isMember),
 
-              // 3. Members Tab
-              _buildMembersTab(community, isAdmin),
+                // 3. Members Tab
+                _buildMembersTab(community, isAdmin),
 
-              // 4. Requests Tab (Admin Only)
-              if (isAdmin) _buildRequestsTab(community) else const Center(child: Text("Admin only")),
-            ],
+                // 4. Requests Tab (Admin Only)
+                if (isAdmin) _buildRequestsTab(community),
+              ],
+            ),
           ),
         );
       },
@@ -315,22 +368,33 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
            final uid = entry.key;
            final role = entry.value;
            
-           return ListTile(
-             title: Text(uid == _auth.currentUserUid ? 'You' : 'User ($uid)'), // In real app fetch name
-             subtitle: Text(role.toUpperCase()),
-             trailing: isAdmin && uid != _auth.currentUserUid ? PopupMenuButton<String>(
-               onSelected: (value) {
-                  if (value == 'kick') { // Not implemented yet
-                  } else {
-                     _communityService.updateMemberRole(community.id, uid, value);
-                  }
-               },
-               itemBuilder: (context) => [
-                 const PopupMenuItem(value: 'viewer', child: Text('Make Viewer')),
-                 const PopupMenuItem(value: 'editor', child: Text('Make Editor')),
-                 const PopupMenuItem(value: 'admin', child: Text('Make Admin')),
-               ],
-             ) : null,
+           return FutureBuilder<DocumentSnapshot>(
+             future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+             builder: (context, snapshot) {
+                 String name = 'User ($uid)';
+                 if (snapshot.hasData && snapshot.data != null && snapshot.data!.exists) {
+                     final data = snapshot.data!.data() as Map<String, dynamic>;
+                     name = data['name'] ?? data['email'] ?? name;
+                 }
+                 
+                 return ListTile(
+                   title: Text(uid == _auth.currentUserUid ? '$name (You)' : name),
+                   subtitle: Text(role.toUpperCase()),
+                   trailing: isAdmin && uid != _auth.currentUserUid ? PopupMenuButton<String>(
+                     onSelected: (value) {
+                        if (value == 'kick') { // Not implemented yet
+                        } else {
+                           _communityService.updateMemberRole(community.id, uid, value);
+                        }
+                     },
+                     itemBuilder: (context) => [
+                       const PopupMenuItem(value: 'viewer', child: Text('Make Viewer')),
+                       const PopupMenuItem(value: 'editor', child: Text('Make Editor')),
+                       const PopupMenuItem(value: 'admin', child: Text('Make Admin')),
+                     ],
+                   ) : null,
+                 );
+             },
            );
         },
       );
@@ -343,18 +407,52 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
         itemCount: community.pendingMemberIds.length,
         itemBuilder: (context, index) {
            final uid = community.pendingMemberIds[index];
-           return ListTile(
-             title: Text('User $uid'),
-             trailing: Row(
-               mainAxisSize: MainAxisSize.min,
-               children: [
-                 IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () => _communityService.approveMember(community.id, uid)),
-                 IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => _communityService.rejectMember(community.id, uid)),
-               ],
-             ),
+           return FutureBuilder<DocumentSnapshot>(
+             future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+             builder: (context, snapshot) {
+                 String name = 'User $uid';
+                 if (snapshot.hasData && snapshot.data != null && snapshot.data!.exists) {
+                     final data = snapshot.data!.data() as Map<String, dynamic>;
+                     name = data['name'] ?? data['email'] ?? name;
+                 }
+
+                 return ListTile(
+                   title: Text(name),
+                   trailing: Row(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                       IconButton(icon: const Icon(Icons.check, color: Colors.green), onPressed: () => _communityService.approveMember(community.id, uid)),
+                       IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => _communityService.rejectMember(community.id, uid)),
+                     ],
+                   ),
+                 );
+             }
            );
         },
       );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, String communityId) {
+    showDialog(
+      context: context, 
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Community?'),
+        content: const Text('This action cannot be undone. All messages and roles will be lost.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+               Navigator.pop(context); // Close dialog
+               Navigator.pop(context); // Close screen
+               await _communityService.deleteCommunity(communityId);
+               // Optimistically close or show success? 
+               // Since we popped, we are back at list.
+            }, 
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
   Future<FileItem> _ensureLocallyAvailable(FileItem file) async {
       // 1. If Local, return as is
@@ -465,35 +563,9 @@ class _CommunityDetailViewState extends State<CommunityDetailView> with SingleTi
           final localItem = await _ensureLocallyAvailable(file);
           if (localItem.localPath == null) throw Exception("Could not download file.");
 
-          if (Platform.isAndroid) {
-              // Copy to Downloads folder
-              // Request permission if needed (Android < 10 needs it, 10+ legacy might need it)
-              // Since we have WRITE_EXTERNAL_STORAGE in manifest:
-              
-              final downloadDir = Directory('/storage/emulated/0/Download/AirDash');
-              if (!await downloadDir.exists()) {
-                  await downloadDir.create(recursive: true);
-              }
-
-              final String newPath = '${downloadDir.path}/${localItem.name}';
-              final File source = File(localItem.localPath!);
-              
-              // Handle duplicate names
-              String uniquePath = newPath;
-              int counter = 1;
-              while (await File(uniquePath).exists()) {
-                   final name = path.basenameWithoutExtension(localItem.name);
-                   final ext = path.extension(localItem.name);
-                   uniquePath = '${downloadDir.path}/$name($counter)$ext';
-                   counter++;
-              }
-
-              await source.copy(uniquePath);
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Saved to Downloads/AirDash!")));
-          } else {
-              // iOS or other: Share is the standard "Save to Files"
-              await _fileService.shareFile(localItem);
-          }
+          await _fileService.downloadFile(localItem);
+          
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File saved/shared successfully!")));
 
        } catch (e) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Save failed: $e")));

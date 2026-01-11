@@ -43,8 +43,7 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> with SingleTick
         final double totalStorageMB = (data['storage'] as int) / (1024 * 1024);
         
         // Dynamic Capacity: Scale in 100GB chunks
-        // If usage < 100gb, max = 100gb
-        // If usage > 100gb, max = 200gb, etc
+        
         final int chunks = (totalStorageMB / 102400).ceil();
         final double maxStorageMB = (chunks > 1 ? chunks : 1) * 102400.0;
         
@@ -204,12 +203,7 @@ class _AdminAnalyticsViewState extends State<AdminAnalyticsView> with SingleTick
   Future<Map<String, dynamic>> _fetchStats() async {
     final userSnap = await FirebaseFirestore.instance.collection('users').count().get();
     
-    // Aggregation for Total Files & Storage
-    // Ideally user 'stats' documents, but iterating 'users' with stored stats is better than iterating all files
-    // For now, we iterate 'files' collection as done previously, OR iterate users if we trust the new counters.
-    // To match the new logic: Let's sum up storageUsed from all users (if we ran a migration).
-    // BUT since we just added the logic, old users won't have the field.
-    // So we STICK to the old method (iterating files) for accuracy until migration script is run.
+  
     
     final files = await FirebaseFirestore.instance.collection('files').get();
     int totalBytes = 0;

@@ -130,6 +130,15 @@ class CommunityService {
   }
 
   // Chat: Get Messages
+  // Admin: Delete Community
+  Future<void> deleteCommunity(String communityId) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    
+    // Additional security check should be here or rely on Firestore Rules
+    await _firestore.collection('communities').doc(communityId).delete();
+  }
+
   Stream<List<CommunityMessage>> getMessages(String communityId) {
     return _firestore.collection('communities')
         .doc(communityId)

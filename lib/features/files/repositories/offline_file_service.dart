@@ -537,6 +537,10 @@ class OfflineFileService {
   }
 
   // Download File
+  // Platform channel for MediaScanner
+  static const platform = MethodChannel('com.airdash.airdash/files');
+
+  // Download File
   Future<void> downloadFile(FileItem item) async {
     if (kIsWeb) {
       if (item.content != null) {
@@ -548,7 +552,49 @@ class OfflineFileService {
         html.Url.revokeObjectUrl(url);
       }
     } else {
-      await shareFile(item); // Fallback to share for consistency
+      if (Platform.isAndroid) {
+         try {
+             if (item.localPath == null) throw Exception("Local path missing");
+             final File source = File(item.localPath!);
+             if (!await source.exists()) throw Exception("Source file missing");
+
+             // 1. Prepare Target Path
+             final downloadDir = Directory('/storage/emulated/0/Download/AirDash');
+             if (!await downloadDir.exists()) {
+                 await downloadDir.create(recursive: true);
+             }
+
+             // 2. Handle Duplicate Names
+             String newPath = '${downloadDir.path}/${item.name}';
+             int counter = 1;
+             while (await File(newPath).exists()) {
+                 final name = path.basenameWithoutExtension(item.name);
+                 final ext = path.extension(item.name);
+                 newPath = '${downloadDir.path}/$name($counter)$ext';
+                 counter++;
+             }
+
+             // 3. Copy
+             await source.copy(newPath);
+
+             // 4. Scan File (Critical for Visibility)
+             try {
+                await platform.invokeMethod('scanFile', {'path': newPath});
+             } catch (e) {
+                print("Media Scan failed: $e");
+             }
+             
+             // We can't easily show a snackbar here as we are in a service/repo without context, 
+             // but the caller usually handles success/fail UI. 
+             // We could return the new path or throw on error.
+         } catch (e) {
+             print("Android Download Failed: $e");
+             // Fallback to Share if direct save fails (e.g. permission limits on Android 11+ for some devices)
+             await shareFile(item); 
+         }
+      } else {
+         await shareFile(item); // iOS: Share is the standard "Save to Files"
+      }
     }
   }
 
