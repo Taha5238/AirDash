@@ -29,9 +29,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   Future<void> _initializePlayer() async {
     try {
       if (kIsWeb) {
-          // Implementing web blob/url video logic is complex for this scope if using raw bytes.
-          // Fallback if content is raw bytes and not URL.
-          // Assuming local path for native or bytes for web. Not fully supported here for byte-only yet.
           setState(() { _error = true; });
           return;
       }

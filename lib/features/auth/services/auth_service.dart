@@ -59,11 +59,11 @@ class AuthService {
           'name': name,
           'email': email,
           'phoneNumber': phoneNumber,
-          'role': 'user', // Default role
-          'accountStatus': 'active', // Default status
-          'plan': 'free', // New: Plan field
-          'storageLimit': 5368709120, // New: 5GB in bytes
-          'storageUsed': 0, // Initialize storage used
+          'role': 'user', 
+          'accountStatus': 'active', 
+          'plan': 'free', 
+          'storageLimit': 5368709120, 
+          'storageUsed': 0,
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
@@ -79,14 +79,14 @@ class AuthService {
   // Sign In
   Future<void> signIn(String email, String password) async {
     try {
-      // 1. Authenticate with Firebase Auth
+    
       UserCredential cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
       
-      // 2. Check Firestore for Role and Status
+    
       if (cred.user != null) {
-        // Force refresh of Access Token and User Metadata (like emailVerified)
+
         await cred.user!.reload();
-        // Sync Verification Status
+        
         if (cred.user!.emailVerified) {
            await _firestore.collection('users').doc(cred.user!.uid).update({'isVerified': true});
         }
@@ -101,8 +101,6 @@ class AuthService {
             throw FirebaseAuthException(code: 'user-blocked', message: 'Your account has been blocked.');
           }
         } else {
-           // Self-healing: Create missing user document if it doesn't exist
-           // This handles legacy users or cases where signup failed halfway
            await _firestore.collection('users').doc(cred.user!.uid).set({
               'uid': cred.user!.uid,
               'name': cred.user!.displayName ?? 'User',
@@ -157,7 +155,7 @@ class AuthService {
             'phoneNumber': user.phoneNumber ?? '',
             'role': 'user',
             'accountStatus': 'active',
-            'isVerified': true, // Google accounts are implicitly verified
+            'isVerified': true, 
             'photoUrl': user.photoURL,
             'plan': 'free',
             'storageLimit': 5368709120, // 5GB
@@ -216,25 +214,15 @@ class AuthService {
       // 1. Read Bytes
       final bytes = await imageFile.readAsBytes();
       
-      // 2. Simple validation (Avoid huge files)
       if (bytes.length > 5 * 1024 * 1024) {
          throw Exception("Image too large (Max 5MB). Please choose a smaller one.");
       }
-      
-      // 3. Convert to Base64
-      // NOTE: In a production app, we should resize/compress this image client-side 
-      // to avoid bloating Firestore. For now, we assume reasonable input or add simple check.
       String base64Image = base64Encode(bytes);
       
-      // 4. Update Firestore
       await _firestore.collection('users').doc(uid).update({
         'photoBase64': base64Image,
-        'photoUrl': null, // Clear old URL so UI prefers Base64
+        'photoUrl': null,
       });
-      
-      // 5. Update Auth (Cannot set Base64 as photoURL usually, so we leave it or set a placeholder)
-      // await currentUser!.updatePhotoURL(null); 
-      
     } catch (e) {
       print("Error uploading profile picture: $e");
       rethrow;
@@ -256,9 +244,7 @@ class AuthService {
     }
   }
 
-  // Update Phone Number
-
-  // Update Phone Number
+ 
   Future<void> updatePhoneNumber(String newNumber) async {
     if (currentUser == null) return;
     try {
@@ -271,7 +257,6 @@ class AuthService {
     }
   }
 
-  // Get User Stream (for real-time profile updates)
   Stream<DocumentSnapshot> getUserStream() {
     if (currentUser == null) return const Stream.empty();
     return _firestore.collection('users').doc(currentUser!.uid).snapshots();

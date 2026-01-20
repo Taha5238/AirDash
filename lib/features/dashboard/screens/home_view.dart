@@ -40,16 +40,8 @@ class _HomeViewState extends State<HomeView> {
     super.initState();
     // Init Notifications
     NotificationService().init();
-    
-    // Check for Admin Deletions on start
     _fileService.syncCloudDeletions().then((_) {
-       // After cleaning up, sync DOWN new files
-       _fileService.syncCloudDeletions().then((_) { // Actually, I reused the method name. Wait.
-           // I added the logic INTO syncCloudDeletions in previous step. 
-           // So just calling it is enough.
-           // Wait, I should verify if I renamed it or just added logic.
-           // I kept the name syncCloudDeletions but added the DOWN logic.
-           // So this existing call is sufficient!
+       _fileService.syncCloudDeletions().then((_) { 
            if (mounted) setState(() {}); 
        });
     });
@@ -66,10 +58,6 @@ class _HomeViewState extends State<HomeView> {
               if (change.type == DocumentChangeType.added) {
                   final data = change.doc.data() as Map<String, dynamic>;
                   final id = change.doc.id;
-                  
-                  // Show Dialog
-                  // We must check if dialog is already showing to avoid stack? 
-                  // For now simple showDialog
                   if (mounted) {
                       _showIncomingTransferDialog(id, data);
                   }
@@ -497,7 +485,6 @@ class _HomeViewState extends State<HomeView> {
         try {
           pictures = await CunningDocumentScanner.getPictures();
         } catch (e) {
-           // Handle cancellation or error (e.g. no camera on emulator)
            print("Scanner error: $e");
            if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -543,7 +530,6 @@ class _HomeViewState extends State<HomeView> {
                ScaffoldMessenger.of(context).showSnackBar(
                    const SnackBar(content: Text("PDF Saved successfully!"))
                );
-               // You could open it immediately or just show in list
            }
         }
       } catch (e) {
@@ -683,10 +669,6 @@ class _HomeViewState extends State<HomeView> {
             if (value == 'share') {
                _shareFile(file);
             } else if (value == 'delete') {
-               // We need a delete function here. 
-               // _fileService.deleteFile(file.id) works but we need confirmation UI?
-               // For quick action, let's just delete or show dialog?
-               // Reuse logic if possible, or simple dialog.
                final confirm = await showDialog<bool>(
                    context: context, 
                    builder: (context) => AlertDialog(

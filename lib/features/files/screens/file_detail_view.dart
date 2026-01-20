@@ -76,8 +76,6 @@ class _FileDetailViewState extends State<FileDetailView> {
      // Show confirmation dialog logic here usually, but for speed:
      await _fileService.deleteFile(_file.id);
      if (mounted) {
-       // Only pop if we are on mobile (pushed status)
-       // OR check if we can pop safely without exiting the app
        if (!ResponsiveLayout.isDesktop(context)) {
           Navigator.of(context).pop(); 
        }
@@ -209,8 +207,6 @@ class _FileDetailViewState extends State<FileDetailView> {
                   ),
               );
           } else if (_file.localPath != null) {
-              // TODO: Handle Web vs Native if localPath is used (e.g. from cache)
-              // But for now, content takes precedence
           }
       }
       return Icon(

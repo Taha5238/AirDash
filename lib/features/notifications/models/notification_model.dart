@@ -2,7 +2,7 @@ import 'package:hive/hive.dart';
 
 part 'notification_model.g.dart';
 
-@HiveType(typeId: 2) // Using typeId 2 (0 and 1 likely taken by FileItem/User)
+@HiveType(typeId: 2) 
 class NotificationModel extends HiveObject {
   @HiveField(0)
   final String id;

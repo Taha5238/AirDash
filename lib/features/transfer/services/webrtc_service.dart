@@ -177,7 +177,7 @@ class WebRTCService {
           if (message.isBinary) {
                _handleIncomingChunk(message.binary);
           } else {
-               // Handle text messages (e.g., metadata specifically sent over channel if needed)
+               // Handle text messages
                if (message.text.startsWith("METADATA:")) {
                    final jsonStr = message.text.substring(9);
                    _incomingFileMetadata = json.decode(jsonStr);
@@ -205,8 +205,6 @@ class WebRTCService {
            onTxProgress!(_receivedBytes / _expectedSize);
       }
       
-      // We need a reliable end-of-file signal. WebRTC doesn't guarantee stream end.
-      // Sender should send a text message "EOF" or we check byte count.
       if (_receivedBytes >= _expectedSize && _expectedSize > 0) {
            _finalizeReception();
       }
@@ -224,8 +222,6 @@ class WebRTCService {
            throw Exception("Connection not open");
        }
        
-       // 1. Send Metadata Header
-       // Add exact byte size to metadata for receiver
        metadata['sizeBytes'] = fileData.length;
        final metaMsg = "METADATA:${json.encode(metadata)}";
        await _dataChannel!.send(RTCDataChannelMessage(metaMsg));

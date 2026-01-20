@@ -51,7 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      // AppBar removed for Dashboard centralization
+      
       body: Stack(
         children: [
           SingleChildScrollView(

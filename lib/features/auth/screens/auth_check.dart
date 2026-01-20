@@ -21,7 +21,7 @@ class _AuthCheckState extends State<AuthCheck> {
   }
 
   Future<void> _checkAuth() async {
-    // Small delay to ensure services are ready, but not enough to feel like a splash
+    
     await Future.delayed(Duration.zero);
     
     if (mounted) {
@@ -31,11 +31,11 @@ class _AuthCheckState extends State<AuthCheck> {
           final role = await AuthService().getUserRole();
           
           if (mounted) {
-             // 1. Reload to get fresh status
+
              await user.reload();
-             final freshUser = AuthService().currentUser; // Get refreshed object
+             final freshUser = AuthService().currentUser;
              
-             // 2. Check Verification
+          
              if (freshUser != null && !freshUser.emailVerified) {
                 Navigator.pushReplacement(
                   context, 
@@ -44,7 +44,7 @@ class _AuthCheckState extends State<AuthCheck> {
                 return;
              }
              
-             // 3. Sync status if verified
+             
              if (freshUser != null && freshUser.emailVerified) {
                AuthService().syncVerificationStatus();
              }
@@ -62,7 +62,7 @@ class _AuthCheckState extends State<AuthCheck> {
             }
           }
        } else {
-          // If not logged in, go to Login immediately
+          
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -73,7 +73,7 @@ class _AuthCheckState extends State<AuthCheck> {
 
   @override
   Widget build(BuildContext context) {
-    // Show a simple loader while checking (should be very brief)
+    
     return const Scaffold(
       body: Center(
         child: CircularProgressIndicator(),

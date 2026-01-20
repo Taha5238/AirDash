@@ -4,8 +4,8 @@ import '../models/file_item.dart';
 import '../repositories/offline_file_service.dart';
 
 class FolderPickerDialog extends StatefulWidget {
-  final String? currentFolderId; // To avoid moving into itself or children (advanced)
-  final String? fileToMoveId; // To prevent moving folder into itself
+  final String? currentFolderId;
+  final String? fileToMoveId;
 
   const FolderPickerDialog({super.key, this.currentFolderId, this.fileToMoveId});
 
@@ -15,9 +15,7 @@ class FolderPickerDialog extends StatefulWidget {
 
 class _FolderPickerDialogState extends State<FolderPickerDialog> {
   final OfflineFileService _fileService = OfflineFileService();
-  String? _selectedFolderId; // null = Root
-  
-  // For navigation within the picker
+  String? _selectedFolderId; 
   String? _navigationParentId; 
   List<FileItem> _currentLevelFolders = [];
 
@@ -28,11 +26,9 @@ class _FolderPickerDialogState extends State<FolderPickerDialog> {
   }
 
   void _loadFolders() {
-      // Get all items at current navigation level
       final allFiles = _fileService.getAllFiles(parentId: _navigationParentId);
       setState(() {
           _currentLevelFolders = allFiles.where((f) => f.isFolder).toList();
-          // Filter out the file itself if it's a folder we are moving
           if (widget.fileToMoveId != null) {
               _currentLevelFolders.removeWhere((f) => f.id == widget.fileToMoveId);
           }
@@ -48,9 +44,6 @@ class _FolderPickerDialogState extends State<FolderPickerDialog> {
 
   void _goUp() async {
       if (_navigationParentId == null) return;
-      
-      // Find parent's parent
-      // This is inefficient but functional for now: get ALL files to find current parent
       final allFiles = _fileService.getAllFiles(); // unfiltered
       try {
           final currentParent = allFiles.firstWhere((f) => f.id == _navigationParentId);
@@ -84,8 +77,7 @@ class _FolderPickerDialogState extends State<FolderPickerDialog> {
              ListTile(
                leading: const Icon(LucideIcons.home),
                title: const Text("Root Folder"),
-               selected: _selectedFolderId == null && _navigationParentId == null, // Can select root only if at root? or allow selecting "Root" explicitly?
-               // Let's allow selecting "Current Level" as destination
+               selected: _selectedFolderId == null && _navigationParentId == null, 
                onTap: () {
                    setState(() {
                       _selectedFolderId = null; 

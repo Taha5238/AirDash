@@ -21,10 +21,10 @@ import '../../notifications/services/notification_service.dart';
 class OfflineFileService {
   Box get _box => Hive.box('filesBox');
 
-  // Get all files from Hive (Filtered by User/Community and Parent Folder)
+ 
   List<FileItem> getAllFiles({String? parentId, String? communityId}) {
     final currentUserUid = AuthService().currentUserUid;
-    if (currentUserUid == null) return []; // No files if not logged in
+    if (currentUserUid == null) return []; 
 
     final List<FileItem> files = [];
     for (var key in _box.keys) {
@@ -38,19 +38,16 @@ class OfflineFileService {
            // Filter logic
            bool matchesContext = false;
            if (communityId != null) {
-              // Community Mode: Show files for this community
+              
               matchesContext = (item.communityId == communityId);
            } else {
-              // Personal Mode: Show files for this user AND not in a community
               matchesContext = (item.userId == currentUserUid && item.communityId == null);
            }
 
            if (matchesContext) {
               if (parentId == null) {
-                  // Root: items with no parentId
                   if (item.parentId == null) files.add(item);
               } else {
-                  // Subfolder: items with matching parentId
                   if (item.parentId == parentId) files.add(item);
               }
            }
@@ -95,7 +92,7 @@ class OfflineFileService {
       print("DEBUG: Starting File Picker...");
         fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
           withData: kIsWeb, 
-          // type: fp.FileType.any, // Removing explicit type to rely on default
+         
         );
 
         print("DEBUG: File Picker Result: ${result != null}");
@@ -124,17 +121,14 @@ class OfflineFileService {
               size = File(newPath).lengthSync();
             } catch (e) {
                print("Error copying file: $e");
-               // Try to use original path if copy fails
                newPath = file.path; 
             }
          }
 
-         // Callback for UI feedback
          if (onFilePicked != null) {
             onFilePicked(fileName, size);
          }
 
-         // Simulate Upload Delay (1 sec per 1 MB, min 1 sec, max 10 sec)
          int delayMillis = (size / (1024 * 1024) * 1000).toInt(); 
          if (delayMillis < 1000) delayMillis = 1000;
          if (delayMillis > 10000) delayMillis = 10000;
@@ -155,11 +149,8 @@ class OfflineFileService {
           parentId: parentId,
           communityId: communityId,
         );
-
-        // 1. Save Local (Hive)
         await _box.put(id, newItem.toMap());
         
-        // 2. Sync Metadata to Firestore
         final batch = FirebaseFirestore.instance.batch();
         final fileRef = FirebaseFirestore.instance.collection('files').doc(id);
 
@@ -175,7 +166,6 @@ class OfflineFileService {
           'createdAt': FieldValue.serverTimestamp(),
         });
 
-        // Atomic Increment for User Stats (Only if personal file)
         if (communityId == null) {
           final userRef = FirebaseFirestore.instance.collection('users').doc(currentUserUid);
           batch.update(userRef, {
@@ -263,20 +253,19 @@ class OfflineFileService {
   // Create Folder
   Future<FileItem?> createFolder(String name, {String? parentId, String? communityId}) async {
     final currentUserUid = AuthService().currentUserUid;
-    final String? userName = AuthService().currentUserName; // Get name
+    final String? userName = AuthService().currentUserName; 
     if (currentUserUid == null) return null;
 
     final String id = const Uuid().v4();
-    // Default folder color
     final Color folderColor = Colors.blue; 
 
     final FileItem newFolder = FileItem(
       id: id,
       name: name,
-      size: '', // Folders don't have size in this simple version
+      size: '', 
       modified: DateTime.now(),
       type: FileType.folder, 
-      localPath: null, // Virtual folder
+      localPath: null, 
       synced: true,
       userId: currentUserUid,
       parentId: parentId,
@@ -286,7 +275,6 @@ class OfflineFileService {
 
     await _box.put(id, newFolder.toMap());
 
-    // Sync to Firestore
     try {
       await FirebaseFirestore.instance.collection('files').doc(id).set({
         'id': id,
@@ -346,19 +334,11 @@ class OfflineFileService {
           if (await file.exists()) {
               final dir = path.dirname(item.localPath!);
               final ext = path.extension(item.localPath!);
-              // Ensure newName has extension or keep old?
-              // Usually user types ID "Funny Cat", we keep ".png".
-              // Assuming newName is valid filename WITHOUT extension or WITH?
-              // Let's assume user provides full name or we handle it in UI. 
-              // Better: UI provides name without extension, we append extension.
-              // For now, let's assume UI does the right thing.
               newPath = path.join(dir, newName);
               try {
                   await file.rename(newPath);
               } catch (e) {
                   print("Error renaming file on disk: $e");
-                  // If disk rename fails, maybe don't rename metadata? 
-                  // or continue? Let's continue but keep old path if fail.
                   newPath = item.localPath;
               }
           }
@@ -367,7 +347,6 @@ class OfflineFileService {
       final updatedItem = item.copyWith(name: newName, localPath: newPath);
       await _box.put(id, updatedItem.toMap());
 
-      // 2. Sync to Firestore (Metadata)
       try {
         await FirebaseFirestore.instance.collection('files').doc(id).update({
             'name': newName
@@ -387,7 +366,6 @@ class OfflineFileService {
 
       if (item.userId != AuthService().currentUserUid) return;
       
-      // Prevent circular move (folder into itself)
       if (item.isFolder && id == newParentId) return;
 
       final updatedItem = item.copyWith(parentId: newParentId);
@@ -404,7 +382,6 @@ class OfflineFileService {
     }
   }
 
-  // Helper to find all descendants of a folder (for recursive delete)
   List<String> _getAllDescendantIds(String folderId) {
      final List<String> descendants = [];
      final allFiles = _box.values.map((e) => FileItem.fromMap(Map<String, dynamic>.from(e))).toList();
@@ -428,11 +405,6 @@ class OfflineFileService {
     if (data != null) {
       final map = Map<String, dynamic>.from(data);
       final item = FileItem.fromMap(map);
-      
-      // Security check: Only delete if owned by current user OR if user is community admin
-      // For now, strict ownership or relying on UI to hide delete button.
-      // Ideally check Community role here if communityId != null.
-      // Simplified: If communityId is set, only allow if user is owner (creator) or we trust the UI check for now.
       if (item.userId != AuthService().currentUserUid && item.communityId == null) return;
 
       // If folder, delete contents recursively
@@ -451,7 +423,6 @@ class OfflineFileService {
       }
       await _box.delete(id);
       
-      // Sync Delete in Firestore
       try {
         final batch = FirebaseFirestore.instance.batch();
         final fileRef = FirebaseFirestore.instance.collection('files').doc(id);
@@ -507,7 +478,7 @@ class OfflineFileService {
   // Get Total Size (Filtered)
   int getTotalSize() {
       int total = 0;
-      final files = getAllFiles(); // This is already filtered by userId!
+      final files = getAllFiles(); 
       for (var f in files) {
           total += _parseSize(f.size);
       }
@@ -528,11 +499,10 @@ class OfflineFileService {
       }
   }
 
-  // Delete All Files (Cleanup - Filtered)
   Future<void> deleteAllFiles() async {
-      final files = getAllFiles(); // Uses filtered list (only personal!)
+      final files = getAllFiles(); 
       for (var f in files) {
-          await deleteFile(f.id); // deleteFile has security check too
+          await deleteFile(f.id); 
       }
   }
 
@@ -583,17 +553,12 @@ class OfflineFileService {
              } catch (e) {
                 print("Media Scan failed: $e");
              }
-             
-             // We can't easily show a snackbar here as we are in a service/repo without context, 
-             // but the caller usually handles success/fail UI. 
-             // We could return the new path or throw on error.
          } catch (e) {
              print("Android Download Failed: $e");
-             // Fallback to Share if direct save fails (e.g. permission limits on Android 11+ for some devices)
              await shareFile(item); 
          }
       } else {
-         await shareFile(item); // iOS: Share is the standard "Save to Files"
+         await shareFile(item); 
       }
     }
   }
@@ -649,7 +614,6 @@ class OfflineFileService {
      }
   }
 
-  // Helper: Get File Type
   FileType _getTypeFromName(String name) {
     String ext = path.extension(name).toLowerCase();
     switch (ext) {
@@ -680,20 +644,17 @@ class OfflineFileService {
     }
   }
 
-  // Helper: Format Size
   String _formatSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  // Sync: Check for Admin Deletions
   Future<void> syncCloudDeletions() async {
     final currentUserUid = AuthService().currentUserUid;
     if (currentUserUid == null) return;
 
     try {
-      // 1. Get all file IDs currently in Firestore for this user
       final query = await FirebaseFirestore.instance
           .collection('files')
           .where('userId', isEqualTo: currentUserUid)
@@ -722,8 +683,6 @@ class OfflineFileService {
       for (var doc in query.docs) {
           if (!_box.containsKey(doc.id)) {
               final data = doc.data();
-              // Create Ghost Item
-              // Map Firestore Type index back to Enum
               FileType type = FileType.other;
               if (data['type'] is int) {
                   type = FileType.values[data['type']];
@@ -780,12 +739,10 @@ class OfflineFileService {
                       userId: data['userId'], 
                       parentId: data['parentId'], 
                       communityId: communityId,
-                      storagePath: data['storagePath'], // SYNC KEY FIX
-                      // TODO: Folder color?
+                      storagePath: data['storagePath'], 
                    );
                    await _box.put(doc.id, newItem.toMap());
               }
-              // Optional: Update existing if metadata changed?
           }
       } catch (e) {
           print("Error syncing community files: $e");
@@ -816,7 +773,6 @@ class OfflineFileService {
          }
 
          final String id = const Uuid().v4();
-         // We should try to use the typeArg if strictly matching, but helper is safer
          final FileType type = _getTypeFromName(fileName);
 
          final FileItem newItem = FileItem(

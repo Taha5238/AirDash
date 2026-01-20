@@ -12,8 +12,6 @@ import 'package:airdash/features/files/repositories/supabase_file_service.dart';
 import '../widgets/folder_picker_dialog.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-
-
 import 'file_detail_view.dart';
 import 'file_search_delegate.dart';
 import 'viewers/image_viewer_page.dart';
@@ -441,10 +439,6 @@ class _FileExplorerViewState extends State<FileExplorerView> {
 
   void _navigateUp() {
       if (_currentFolderId == null) return;
-      
-      // We need to find the parent of the current folder to know where to go back to.
-      // Or we can just go to root if we don't track stack? 
-      // Better to query the current folder's item to find its parentId.
       final item = Hive.box('filesBox').get(_currentFolderId);
       if (item != null) {
           final map = Map<String, dynamic>.from(item);
@@ -475,10 +469,7 @@ class _FileExplorerViewState extends State<FileExplorerView> {
           final matchesType = _filterType == null || file.type == _filterType;
           return matchesSearch && matchesType;
         }).toList();
-
-        // If selected file was deleted (not in allFiles), clear selection
         if (_selectedFile != null && !allFiles.any((f) => f.id == _selectedFile!.id)) {
-            // Schedule the state update for next frame to avoid build collision
             WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) {
                    setState(() {
@@ -488,14 +479,10 @@ class _FileExplorerViewState extends State<FileExplorerView> {
             });
         }
         
-        // Also update selected file reference if it changed (e.g. starred status)
         if (_selectedFile != null) {
            try {
              final updatedSelected = allFiles.firstWhere((f) => f.id == _selectedFile!.id);
              if (updatedSelected != _selectedFile) {
-               // We don't need setState here usually if we just pass updatedSelected down, 
-               // but _selectedFile is state.
-               // Let's just use updatedSelected in the UI.
                _selectedFile = updatedSelected;
              }
            } catch (_) {}

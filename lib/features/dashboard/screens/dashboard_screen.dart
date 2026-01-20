@@ -53,7 +53,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             final title = data['title'] ?? 'Notification';
                             final body = data['body'] ?? '';
                             
-                            // 1. Show Local Notification (Snackbar for now, or use Service)
                             ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                     content: Text("$title: $body"),
@@ -63,10 +62,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 )
                             );
 
-                            // 2. Add to Local Hive History
                             NotificationService().addNotification(title: title, body: body);
 
-                            // 3. Delete from Server (Mark as handled)
                             change.doc.reference.delete(); 
                         }
                     }

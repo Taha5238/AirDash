@@ -339,7 +339,7 @@ class _RecentActivityList extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('files')
           .orderBy('createdAt', descending: true)
-          .limit(5)
+          .limit(10)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());

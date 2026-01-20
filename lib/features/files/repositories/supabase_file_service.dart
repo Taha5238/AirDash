@@ -13,9 +13,7 @@ class SupabaseFileService {
   final SupabaseClient _client = Supabase.instance.client;
   final Uuid _uuid = const Uuid();
 
-  /// Helper to convert any ID (like legacy timestamps) to a valid UUID.
-  /// Uses UUID v5 (Namespace) to ensure the same timestamp ID always maps to the same UUID.
-  String _toUUID(String id) {
+   String _toUUID(String id) {
     try {
       // Return as-is if already a valid UUID
       if (Uuid.isValidUUID(fromString: id)) {

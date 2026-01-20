@@ -36,9 +36,6 @@ class _OfficeViewerPageState extends State<OfficeViewerPage> {
 
     final String path = widget.file.localPath!;
     final String url = Uri.file(path).toString();
-
-    // Android WebView does NOT support file:// for office docs natively rendering them.
-    // iOS WebView DOES render Office docs natively.
     if (Platform.isAndroid) {
         setState(() {
              _errorMessage = "Android does not support native in-app viewing of Office documents without external apps. Please convert to PDF.";

@@ -44,14 +44,9 @@ class CommunityService {
   Stream<List<Community>> getCommunities() {
     final user = _auth.currentUser;
     if (user == null) return Stream.value([]);
-
-    // This is a bit complex in Firestore without advanced indexing. 
-    // For now, we'll fetch all and filter client side or use composite queries if needed.
-    // Simplifying: Fetch all, then filter. Ideally should hold a list of joined community IDs in user profile.
     
     return _firestore.collection('communities').snapshots().map((snapshot) {
       return snapshot.docs.map((doc) => Community.fromMap(doc.data(), doc.id))
-          //.where((c) => c.isPublic || c.isMember(user.uid)) // Show all so users can find private ones
           .toList();
     });
   }
@@ -129,13 +124,10 @@ class CommunityService {
     await docRef.set(message.toMap());
   }
 
-  // Chat: Get Messages
-  // Admin: Delete Community
   Future<void> deleteCommunity(String communityId) async {
     final user = _auth.currentUser;
     if (user == null) return;
     
-    // Additional security check should be here or rely on Firestore Rules
     await _firestore.collection('communities').doc(communityId).delete();
   }
 

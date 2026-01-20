@@ -23,8 +23,7 @@ class SignalingService {
   // Create an Answer (Receiver)
   Future<void> createAnswer(String transferId, Map<String, dynamic> answerInit) async {
     await _db.collection('transfer_signals').doc(transferId).update({
-      'type': 'answer', // Or keep 'offer' and just add 'answer' field? Standard is usually creating a separate signal or updating.
-      // Better approach for 1:1: Update the same doc to track state.
+      'type': 'answer', 
       'answer': answerInit,
       'status': 'accepted',
     });
@@ -32,7 +31,7 @@ class SignalingService {
 
   // Add ICE Candidate
   Future<void> addCandidate(String transferId, Map<String, dynamic> candidate, String type) async {
-    // type = 'senderCandidate' or 'receiverCandidate'
+    
     await _db.collection('transfer_signals').doc(transferId).collection('candidates').add({
        'candidate': candidate,
        'type': type,
@@ -44,7 +43,7 @@ class SignalingService {
   Stream<QuerySnapshot> getIncomingSignals(String userId) {
       return _db.collection('transfer_signals')
           .where('receiverId', isEqualTo: userId)
-          .where('status', isEqualTo: 'pending') // Only show pending offers
+          .where('status', isEqualTo: 'pending') 
           .snapshots();
   }
 

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'file_type.dart';
 export 'file_type.dart';
 
-// enum FileType { folder, image, video, document, audio, other } // Moved to file_type.dart
 
 class FileItem {
   final String id;
@@ -13,15 +12,15 @@ class FileItem {
   final DateTime modified;
   final FileType type;
   final Color? color; // For folders
-  final String? previewUrl; // For images (mock asset path)
+  final String? previewUrl; // For images
   final String? storagePath; // Path in Cloud Storage (Supabase/Firebase)
   final String? localPath;
   final bool synced;
   final bool isStarred;
   final Uint8List? content; // For Web support
   final String? userId; // Owner of the file
-  final String? parentId; // ID of the parent folder (null for root)
-  final String? communityId; // ID of the community if this is a community file
+  final String? parentId; 
+  final String? communityId; 
 
   const FileItem({
     required this.id,

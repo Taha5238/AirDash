@@ -80,16 +80,10 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
         
         // Super Admin Access
         final hasAccess = isMember || isCommunityAdmin || _isGlobalAdmin;
-
-        // Chat Access: STRICTLY for members only. System Admins cannot spy on chat unless they join.
         final showChat = isMember; 
-
-        // Admin Controls (Requests, Delete, Kick)
         final showAdminControls = isCommunityAdmin || _isGlobalAdmin;
 
         final isPending = community.pendingMemberIds.contains(currentUser);
-
-        // Access Control: Block ALL content if not a member AND not global admin
         if (!hasAccess) {
              return Scaffold(
                 appBar: AppBar(title: Text(community.name)),
@@ -154,9 +148,6 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
                 ),
              );
         }
-
-        // Calculate tab count dynamically
-        // Files (Always) + Chat (If Member) + Members (Always) + Requests (If Admin)
         final List<Widget> tabs = [
            const Tab(text: 'Files'),
            if (showChat) const Tab(text: 'Chat'),
@@ -249,7 +240,7 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cloud Sync Complete!")));
                           } catch (e) {
                               print("Community Auto-Backup failed: $e");
-                              // Not critical for local save, but means others can't see it (ghost)
+                             
                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Cloud Sync Failed: $e")));
                           }
                       }
@@ -264,12 +255,7 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
             ),
           ),
         Expanded(
-          // We need a way to refresh this list or use a stream. 
-          // OfflineFileService is Hive-based (local). We need to sync down community files first?
-          // For now, let's assume syncCloud logic handles it or we trigger a sync.
-          // In a real app we'd have a Stream from Hive or Firestore. 
-          // Let's rely on FutureBuilder for Hive for now, assuming Sync happens in background or we trigger it.
-          // TODO: Trigger Sync logic for this community
+          
           child: ValueListenableBuilder(
             valueListenable: Hive.box('filesBox').listenable(),
             builder: (context, box, _) {
@@ -483,8 +469,7 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
                Navigator.pop(context); // Close dialog
                Navigator.pop(context); // Close screen
                await _communityService.deleteCommunity(communityId);
-               // Optimistically close or show success? 
-               // Since we popped, we are back at list.
+             
             }, 
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -535,24 +520,14 @@ class _CommunityDetailViewState extends State<CommunityDetailView> {
       final localFile = File('${dir.path}/$name');
       await localFile.writeAsBytes(bytes);
 
-      // Update Hive
-      // We need to 'fake' a save or update the item properties manually
-      // Since OfflineFileService manages Hive, let's update it there.
-      // But we don't have a direct 'updateLocalPath' method exposed easily except duplicate logic.
-      // Let's create a new item and put it.
+      
       
       final updatedItem = file.copyWith(
           localPath: localFile.path,
           synced: true
       );
       
-      // We need to persist this update so next time it is local
-      // Using a bit of a hack: re-save to box. 
-      // Ideally OfflineFileService should have 'markAsDownloaded(id, path)'
-      // For now we assume this ephemeral DetailView can handle it or we ignore persistence 
-      // (but persistence is better).
-      // Let's try to update if we can access the box, but `_fileService` hides it.
-      // We'll rely on the caller to use the returned item.
+      
       await Hive.box('filesBox').put(updatedItem.id, updatedItem.toMap());
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Downloaded!")));
       return updatedItem;
